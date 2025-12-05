@@ -1,0 +1,10 @@
+{
+	"/": [],
+	"/analysis": [],
+	"/auth/login": [],
+	"/auth/register": [],
+	"/newsletter": [],
+	"/political": [],
+	"/ticker/[symbol]": [],
+	"/watchlist": []
+}

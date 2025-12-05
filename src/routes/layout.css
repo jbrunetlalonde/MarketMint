@@ -1,0 +1,330 @@
+/* IBM Plex Mono - Retro newspaper typography - loaded via app.html */
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/typography';
+
+/* Tailwind CSS 4 Theme Configuration */
+@theme {
+  /* Typography */
+  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+  --font-serif: 'Georgia', 'Times New Roman', serif;
+
+  /* Newspaper Color Palette */
+  --color-newsprint: #f5f5f0;
+  --color-newsprint-dark: #e8e8e0;
+  --color-ink: #1a1a1a;
+  --color-ink-light: #333333;
+  --color-ink-muted: #666666;
+  --color-ink-faint: #999999;
+
+  /* Market Colors */
+  --color-gain: #0d7a3e;
+  --color-gain-light: #e8f5e9;
+  --color-loss: #c41e3a;
+  --color-loss-light: #fce4ec;
+  --color-neutral: #0066cc;
+
+  /* Borders */
+  --color-border: #cccccc;
+  --color-border-dark: #999999;
+
+  /* Spacing for newspaper grid */
+  --spacing-column: 1.5rem;
+  --spacing-gutter: 1rem;
+}
+
+/* Base Styles */
+:root {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--color-newsprint);
+  color: var(--color-ink);
+  min-height: 100vh;
+}
+
+/* Headlines - Newspaper Style */
+.headline {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+}
+
+.headline-xl {
+  font-size: 2rem;
+  border-bottom: 3px double var(--color-ink);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.headline-lg {
+  font-size: 1.5rem;
+  border-bottom: 2px solid var(--color-ink);
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.headline-md {
+  font-size: 1.125rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Newspaper Grid Layout */
+.newspaper-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--spacing-gutter);
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--spacing-column);
+}
+
+.col-span-full { grid-column: span 12; }
+.col-span-8 { grid-column: span 8; }
+.col-span-6 { grid-column: span 6; }
+.col-span-4 { grid-column: span 4; }
+.col-span-3 { grid-column: span 3; }
+
+@media (max-width: 1024px) {
+  .newspaper-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+  .col-span-8, .col-span-6 { grid-column: span 6; }
+  .col-span-4, .col-span-3 { grid-column: span 3; }
+}
+
+@media (max-width: 640px) {
+  .newspaper-grid {
+    grid-template-columns: 1fr;
+  }
+  .col-span-8, .col-span-6, .col-span-4, .col-span-3, .col-span-full {
+    grid-column: span 1;
+  }
+}
+
+/* Card Styles */
+.card {
+  background: white;
+  border: 1px solid var(--color-border);
+  padding: 1rem;
+}
+
+.card-elevated {
+  box-shadow: 2px 2px 0 var(--color-border);
+}
+
+/* Stock Price Display */
+.price-positive {
+  color: var(--color-gain);
+}
+
+.price-negative {
+  color: var(--color-loss);
+}
+
+.price-neutral {
+  color: var(--color-ink-muted);
+}
+
+/* Ticker Symbol */
+.ticker-symbol {
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: 0.05em;
+}
+
+/* Byline / Caption */
+.byline {
+  font-size: 0.75rem;
+  color: var(--color-ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Dividers */
+.divider {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1rem 0;
+}
+
+.divider-double {
+  border-top: 3px double var(--color-ink);
+}
+
+/* Button Styles */
+.btn {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-ink);
+  background: white;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn:hover {
+  background: var(--color-ink);
+  color: white;
+}
+
+.btn-primary {
+  background: var(--color-ink);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--color-ink-light);
+}
+
+.btn-small {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+/* Form Inputs */
+.input {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  background: white;
+  width: 100%;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-ink);
+  box-shadow: 0 0 0 1px var(--color-ink);
+}
+
+/* Data Table */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.data-table th {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.75rem;
+  color: var(--color-ink-muted);
+}
+
+.data-table tr:hover {
+  background: var(--color-newsprint);
+}
+
+/* Masthead */
+.masthead {
+  text-align: center;
+  padding: 1.5rem 0;
+  border-bottom: 3px double var(--color-ink);
+  margin-bottom: 1.5rem;
+}
+
+.masthead-title {
+  font-family: var(--font-mono);
+  font-size: 2.5rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  margin: 0;
+}
+
+.masthead-date {
+  font-size: 0.75rem;
+  color: var(--color-ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-top: 0.5rem;
+}
+
+/* Navigation */
+.nav-bar {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 1.5rem;
+}
+
+.nav-link {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  text-decoration: underline;
+}
+
+.nav-link.active {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* Loading States */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-newsprint-dark) 25%,
+    var(--color-newsprint) 50%,
+    var(--color-newsprint-dark) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Badge / Tag */
+.badge {
+  display: inline-block;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid currentColor;
+}
+
+.badge-gain {
+  color: var(--color-gain);
+  background: var(--color-gain-light);
+}
+
+.badge-loss {
+  color: var(--color-loss);
+  background: var(--color-loss-light);
+}
