@@ -9,6 +9,12 @@ RUN npm install --omit=dev
 # Copy source
 COPY src ./src
 
+# Copy data files (Congress members, CEOs list)
+COPY data ./data
+
+# Copy pre-generated portraits for fast loading (no API calls needed)
+COPY portraits ./portraits
+
 # Expose port
 EXPOSE 5001
 

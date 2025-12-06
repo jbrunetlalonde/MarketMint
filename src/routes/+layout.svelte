@@ -1,11 +1,45 @@
 <script lang="ts">
 	import './layout.css';
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { themeStore } from '$lib/stores/theme.svelte';
+	import api from '$lib/utils/api';
+	import MastheadHeader from '$lib/components/MastheadHeader.svelte';
+	import NavBar from '$lib/components/NavBar.svelte';
 
 	let { children } = $props();
 
 	const isLandingPage = $derived(page.url.pathname === '/');
+
+	let unreadAlertCount = $state(0);
+
+	async function fetchUnreadCount() {
+		if (!auth.isAuthenticated || !auth.accessToken) {
+			unreadAlertCount = 0;
+			return;
+		}
+
+		try {
+			const [tradeResponse, ideaResponse] = await Promise.all([
+				api.getUnreadAlertCount(auth.accessToken),
+				api.getUnreadIdeaAlertCount(auth.accessToken)
+			]);
+
+			const tradeCount = tradeResponse.success ? tradeResponse.data?.count ?? 0 : 0;
+			const ideaCount = ideaResponse.success ? ideaResponse.data?.count ?? 0 : 0;
+			unreadAlertCount = tradeCount + ideaCount;
+		} catch {
+			unreadAlertCount = 0;
+		}
+	}
+
+	onMount(() => {
+		themeStore.initialize();
+		fetchUnreadCount();
+		const interval = setInterval(fetchUnreadCount, 60000);
+		return () => clearInterval(interval);
+	});
 
 	const currentDate = new Date().toLocaleDateString('en-US', {
 		weekday: 'long',
@@ -17,6 +51,8 @@
 	const navLinks = [
 		{ href: '/markets', label: 'Markets' },
 		{ href: '/watchlist', label: 'Watchlist' },
+		{ href: '/portfolio', label: 'Portfolio' },
+		{ href: '/alerts', label: 'Alerts' },
 		{ href: '/political', label: 'Congress Trades' },
 		{ href: '/newsletter', label: 'Newsletter' },
 		{ href: '/analysis', label: 'Analysis' }
@@ -50,42 +86,15 @@
 		</header>
 	{:else}
 		<!-- Internal Pages Header - Full Navigation -->
-		<header class="masthead">
-			<a href="/" class="masthead-logo-link">
-				<img src="/market_mint.png" alt="MarketMint" class="masthead-logo" />
-			</a>
-			<p class="masthead-date">{currentDate}</p>
-		</header>
-
-		<nav class="nav-bar">
-			<div class="nav-spacer"></div>
-			<div class="nav-links">
-				{#each navLinks as link (link.href)}
-					<a
-						href={link.href}
-						class="nav-link"
-						class:active={page.url.pathname === link.href ||
-							page.url.pathname.startsWith(link.href)}
-					>
-						{link.label}
-					</a>
-				{/each}
-			</div>
-			<div class="nav-auth">
-				{#if auth.isAuthenticated && auth.user}
-					<span class="nav-user">
-						<svg class="user-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<circle cx="12" cy="8" r="4"></circle>
-							<path d="M4 20c0-4 4-6 8-6s8 2 8 6"></path>
-						</svg>
-						{auth.user.username}
-					</span>
-					<button onclick={handleLogout} class="nav-link logout-btn">Logout</button>
-				{:else}
-					<a href="/auth/login" class="nav-link">Login</a>
-				{/if}
-			</div>
-		</nav>
+		<MastheadHeader {currentDate} />
+		<NavBar
+			links={navLinks}
+			currentPath={page.url.pathname}
+			{unreadAlertCount}
+			isAuthenticated={auth.isAuthenticated}
+			username={auth.user?.username}
+			onLogout={handleLogout}
+		/>
 	{/if}
 
 	<!-- Main Content -->
@@ -97,6 +106,41 @@
 	{#if !isLandingPage}
 		<footer class="border-t border-border mt-8 py-4 text-center">
 			<p class="byline">MarketMint &copy; {new Date().getFullYear()} &mdash; For educational purposes only</p>
+
+			<div class="theme-switcher mt-3">
+				<button
+					onclick={() => themeStore.setTheme('light')}
+					class="theme-btn"
+					class:active={themeStore.theme === 'light'}
+					aria-label="Light mode"
+				>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<circle cx="12" cy="12" r="5"></circle>
+						<path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+					</svg>
+				</button>
+				<button
+					onclick={() => themeStore.setTheme('system')}
+					class="theme-btn"
+					class:active={themeStore.theme === 'system'}
+					aria-label="System preference"
+				>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<rect x="2" y="3" width="20" height="14" rx="2"></rect>
+						<path d="M8 21h8M12 17v4"></path>
+					</svg>
+				</button>
+				<button
+					onclick={() => themeStore.setTheme('dark')}
+					class="theme-btn"
+					class:active={themeStore.theme === 'dark'}
+					aria-label="Dark mode"
+				>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+					</svg>
+				</button>
+			</div>
 		</footer>
 	{/if}
 </div>

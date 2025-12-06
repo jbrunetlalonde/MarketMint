@@ -134,6 +134,16 @@ export const api = {
 			token
 		}),
 
+	updateWatchlistNotes: (token: string, ticker: string, notes: string) =>
+		request<{ id: string; ticker: string; notes: string; added_at: string }>(
+			`/api/watchlist/${ticker}`,
+			{
+				method: 'PUT',
+				token,
+				body: JSON.stringify({ notes })
+			}
+		),
+
 	// History
 	getHistory: (ticker: string, period = '1y', token?: string) =>
 		request<{
@@ -333,6 +343,32 @@ export const api = {
 			}>
 		>(`/api/political/officials${queryString ? `?${queryString}` : ''}`, { token });
 	},
+
+	getPoliticalOfficial: (name: string, token?: string) =>
+		request<{
+			id: string;
+			name: string;
+			title: string | null;
+			party: string | null;
+			state: string | null;
+			district: string | null;
+			portraitUrl: string | null;
+			chamber: string;
+			recentTrades: Array<{
+				id: number;
+				officialName: string;
+				ticker: string;
+				assetDescription: string | null;
+				transactionType: string;
+				transactionDate: string;
+				reportedDate: string;
+				amountDisplay: string;
+				party: string | null;
+				title: string | null;
+				state: string | null;
+				chamber: string;
+			}>;
+		}>(`/api/political/officials/${encodeURIComponent(name)}`, { token }),
 
 	// Newsletter
 	subscribeNewsletter: (email: string, name?: string) =>
@@ -621,6 +657,40 @@ export const api = {
 			token
 		}),
 
+	// Idea Alerts
+	getIdeaAlerts: (options?: { unreadOnly?: boolean; limit?: number }, token?: string) => {
+		const params = new URLSearchParams();
+		if (options?.unreadOnly) params.set('unreadOnly', 'true');
+		if (options?.limit) params.set('limit', String(options.limit));
+		const queryString = params.toString();
+		return request<{
+			alerts: Array<{
+				id: number;
+				ideaId: number;
+				ticker: string;
+				alertType: 'target_hit' | 'stopped_out';
+				triggerPrice: number;
+				entryPrice: number | null;
+				targetPrice: number | null;
+				stopLoss: number | null;
+				pnlPercent: number | null;
+				ideaTitle: string | null;
+				createdAt: string;
+				readAt: string | null;
+			}>;
+			unreadCount: number;
+		}>(`/api/alerts/ideas${queryString ? `?${queryString}` : ''}`, { token });
+	},
+
+	getUnreadIdeaAlertCount: (token?: string) =>
+		request<{ count: number }>('/api/alerts/ideas/count', { token }),
+
+	markIdeaAlertRead: (alertId: number, token?: string) =>
+		request<{ message: string }>(`/api/alerts/ideas/${alertId}/read`, {
+			method: 'POST',
+			token
+		}),
+
 	// Trading Ideas
 	getTradingIdeas: (status?: string, token?: string) =>
 		request<
@@ -771,7 +841,85 @@ export const api = {
 	searchSymbols: (query: string, limit = 8) =>
 		request<Array<{ symbol: string; name: string; exchange: string }>>(
 			`/api/search/symbols?q=${encodeURIComponent(query)}&limit=${limit}`
-		)
+		),
+
+	// Portfolio
+	getPortfolio: (token: string) =>
+		request<
+			Array<{
+				id: string;
+				ticker: string;
+				shares: number;
+				costBasis: number;
+				purchaseDate: string | null;
+				notes: string | null;
+				createdAt: string;
+				updatedAt: string;
+			}>
+		>('/api/portfolio', { token }),
+
+	getPortfolioSummary: (token: string) =>
+		request<
+			Array<{
+				ticker: string;
+				totalShares: number;
+				avgCostBasis: number | null;
+			}>
+		>('/api/portfolio/summary', { token }),
+
+	addPortfolioHolding: (
+		token: string,
+		data: {
+			ticker: string;
+			shares: number;
+			costBasis: number;
+			purchaseDate?: string;
+			notes?: string;
+		}
+	) =>
+		request<{
+			id: string;
+			ticker: string;
+			shares: number;
+			costBasis: number;
+			purchaseDate: string | null;
+			notes: string | null;
+			createdAt: string;
+		}>('/api/portfolio', {
+			method: 'POST',
+			token,
+			body: JSON.stringify(data)
+		}),
+
+	updatePortfolioHolding: (
+		token: string,
+		id: string,
+		data: {
+			shares?: number;
+			costBasis?: number;
+			purchaseDate?: string;
+			notes?: string;
+		}
+	) =>
+		request<{
+			id: string;
+			ticker: string;
+			shares: number;
+			costBasis: number;
+			purchaseDate: string | null;
+			notes: string | null;
+			updatedAt: string;
+		}>(`/api/portfolio/${id}`, {
+			method: 'PUT',
+			token,
+			body: JSON.stringify(data)
+		}),
+
+	deletePortfolioHolding: (token: string, id: string) =>
+		request<{ message: string }>(`/api/portfolio/${id}`, {
+			method: 'DELETE',
+			token
+		})
 };
 
 export default api;

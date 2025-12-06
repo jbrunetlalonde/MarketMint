@@ -30,6 +30,7 @@ import economicRoutes from './routes/economic.js';
 import alertsRoutes from './routes/alerts.js';
 import tradingIdeasRoutes from './routes/tradingIdeas.js';
 import searchRoutes from './routes/search.js';
+import portfolioRoutes from './routes/portfolio.js';
 import { initializeScheduler } from './services/scheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -103,7 +104,19 @@ app.use('/api/economic', economicRoutes);
 app.use('/api/alerts', alertsRoutes);
 app.use('/api/ideas', tradingIdeasRoutes);
 app.use('/api/search', searchRoutes);
-app.use('/portraits', express.static(path.join(__dirname, '../portraits')));
+app.use('/api/portfolio', portfolioRoutes);
+// Serve portraits with aggressive caching (1 year) - images are pre-generated and static
+app.use('/portraits', express.static(path.join(__dirname, '../portraits'), {
+  maxAge: '1y',
+  immutable: true,
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    // Set cache headers for maximum performance
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+  }
+}));
 
 // ============================================
 // WEBSOCKET

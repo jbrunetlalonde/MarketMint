@@ -1,0 +1,65 @@
+[
+  {
+    "name": "Satya Nadella",
+    "category": "ceo",
+    "localPath": "/Users/jordan/Desktop/Code/MarketMint/backend/portraits/ceo-satya-nadella.png",
+    "imageUrl": "https://replicate.delivery/xezq/ahT7egYY8JzUJCB32jJZYPoqNTuTEQnLR4iFYjOBO5QTuG4KA/tmpzmku5f9i.png",
+    "status": "success"
+  },
+  {
+    "name": "Sundar Pichai",
+    "category": "ceo",
+    "localPath": "/Users/jordan/Desktop/Code/MarketMint/backend/portraits/ceo-sundar-pichai.png",
+    "imageUrl": "https://replicate.delivery/xezq/lQXALFhWXD5WMtRKLYdgDztN7TBZwZRWeVBgW1KuLkXbuG4KA/tmptze64ic_.png",
+    "status": "success"
+  },
+  {
+    "name": "Tim Cook",
+    "category": "ceo",
+    "localPath": "/Users/jordan/Desktop/Code/MarketMint/backend/portraits/ceo-tim-cook.png",
+    "imageUrl": "https://replicate.delivery/xezq/8lmM5eeJl6k3ZUZgfmb1Nrg4OBWbRk3eV6pSZ0Ls0Kqb01AXB/tmp88348686.png",
+    "status": "success"
+  },
+  {
+    "name": "Elon Musk",
+    "category": "ceo",
+    "localPath": "/Users/jordan/Desktop/Code/MarketMint/backend/portraits/ceo-elon-musk.png",
+    "imageUrl": "https://replicate.delivery/xezq/hHXpiwoee3uAMUF6jjT3QKHC4HPGDrdiYncfoLVJPrlt6agrA/tmp2mbmu0em.png",
+    "status": "success"
+  },
+  {
+    "name": "Mark Zuckerberg",
+    "category": "ceo",
+    "localPath": "/Users/jordan/Desktop/Code/MarketMint/backend/portraits/ceo-mark-zuckerberg.png",
+    "imageUrl": "https://replicate.delivery/xezq/DaYCj7IMB87xAB2q0IAyGZayVtz2vWtSqZwpAsIBe1QzuG4KA/tmp2izk0duy.png",
+    "status": "success"
+  },
+  {
+    "name": "Alexandria Ocasio-Cortez",
+    "category": "house",
+    "localPath": "/Users/jordan/Desktop/Code/MarketMint/backend/portraits/house-alexandria-ocasio-cortez.png",
+    "imageUrl": "https://replicate.delivery/xezq/d9pfxENl5B3vMyEhdF48fOVe7KUfARYxqyL0YZOg277b31AXB/tmpy_ofvsbo.png",
+    "status": "success"
+  },
+  {
+    "name": "Kevin McCarthy",
+    "category": "house",
+    "localPath": "/Users/jordan/Desktop/Code/MarketMint/backend/portraits/house-kevin-mccarthy.png",
+    "imageUrl": "https://replicate.delivery/xezq/to9r82EynM5UG9Znfu53eZeYfiYZdz7jzUxbZry8cU3V41AXB/tmpcq7uqo59.png",
+    "status": "success"
+  },
+  {
+    "name": "Chuck Schumer",
+    "category": "senate",
+    "localPath": "/Users/jordan/Desktop/Code/MarketMint/backend/portraits/senate-chuck-schumer.png",
+    "imageUrl": "https://replicate.delivery/xezq/VyR6KfsbQeqA6EbRN69HVYp7VJUSM1auQ1WqkC3fP2Vt8agrA/tmppnxotev3.png",
+    "status": "success"
+  },
+  {
+    "name": "Mitch McConnell",
+    "category": "senate",
+    "localPath": "/Users/jordan/Desktop/Code/MarketMint/backend/portraits/senate-mitch-mcconnell.png",
+    "imageUrl": "https://replicate.delivery/xezq/fe57FuRqjHtkeJQaKNPbshQqdlOU8OgEfeTsZ0Aqb3940rBuC/tmp63ygp5hq.png",
+    "status": "success"
+  }
+]

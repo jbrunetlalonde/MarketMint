@@ -26,8 +26,23 @@
  * ```
  */
 declare module '$env/static/private' {
+	export const DB_USER: string;
+	export const DB_PASSWORD: string;
+	export const DB_NAME: string;
+	export const JWT_SECRET: string;
+	export const FMP_API_KEY: string;
+	export const YAHOO_API_KEY: string;
+	export const SERP_API_KEY: string;
+	export const ALPHA_VANTAGE_API_KEY: string;
+	export const NEWS_API_KEY: string;
+	export const REPLICATE_API_TOKEN: string;
+	export const FINNHUB_API_KEY: string;
+	export const FRED_API_KEY: string;
+	export const NODE_ENV: string;
 	export const NVM_RC_VERSION: string;
+	export const NoDefaultCurrentDirectoryInExePath: string;
 	export const __MISE_DIFF: string;
+	export const CLAUDE_CODE_ENTRYPOINT: string;
 	export const TERM_PROGRAM: string;
 	export const NODE: string;
 	export const INIT_CWD: string;
@@ -41,9 +56,11 @@ declare module '$env/static/private' {
 	export const npm_config_global_prefix: string;
 	export const TERM_PROGRAM_VERSION: string;
 	export const COLOR: string;
+	export const VIPSHOME: string;
 	export const npm_config_noproxy: string;
 	export const npm_config_local_prefix: string;
 	export const ZSH: string;
+	export const GIT_EDITOR: string;
 	export const NVM_DIR: string;
 	export const USER: string;
 	export const LS_COLORS: string;
@@ -67,6 +84,7 @@ declare module '$env/static/private' {
 	export const PWD: string;
 	export const npm_lifecycle_event: string;
 	export const EDITOR: string;
+	export const OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: string;
 	export const P9K_SSH: string;
 	export const npm_package_name: string;
 	export const P9K_TTY: string;
@@ -85,6 +103,7 @@ declare module '$env/static/private' {
 	export const LESS: string;
 	export const LOGNAME: string;
 	export const npm_lifecycle_script: string;
+	export const COREPACK_ENABLE_AUTO_PIN: string;
 	export const SSH_SOCKET_DIR: string;
 	export const npm_config_user_agent: string;
 	export const __MISE_SESSION: string;
@@ -92,11 +111,14 @@ declare module '$env/static/private' {
 	export const HOMEBREW_CELLAR: string;
 	export const _P9K_SSH_TTY: string;
 	export const CONDA_CHANGEPS1: string;
+	export const CLAUDECODE: string;
 	export const SECURITYSESSIONID: string;
 	export const __MISE_ZSH_PRECMD_RUN: string;
 	export const npm_node_execpath: string;
 	export const npm_config_prefix: string;
 	export const COLORTERM: string;
+	export const PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS: string;
+	export const VITE_USER_NODE_ENV: string;
 }
 
 /**
@@ -126,8 +148,23 @@ declare module '$env/static/public' {
  */
 declare module '$env/dynamic/private' {
 	export const env: {
+		DB_USER: string;
+		DB_PASSWORD: string;
+		DB_NAME: string;
+		JWT_SECRET: string;
+		FMP_API_KEY: string;
+		YAHOO_API_KEY: string;
+		SERP_API_KEY: string;
+		ALPHA_VANTAGE_API_KEY: string;
+		NEWS_API_KEY: string;
+		REPLICATE_API_TOKEN: string;
+		FINNHUB_API_KEY: string;
+		FRED_API_KEY: string;
+		NODE_ENV: string;
 		NVM_RC_VERSION: string;
+		NoDefaultCurrentDirectoryInExePath: string;
 		__MISE_DIFF: string;
+		CLAUDE_CODE_ENTRYPOINT: string;
 		TERM_PROGRAM: string;
 		NODE: string;
 		INIT_CWD: string;
@@ -141,9 +178,11 @@ declare module '$env/dynamic/private' {
 		npm_config_global_prefix: string;
 		TERM_PROGRAM_VERSION: string;
 		COLOR: string;
+		VIPSHOME: string;
 		npm_config_noproxy: string;
 		npm_config_local_prefix: string;
 		ZSH: string;
+		GIT_EDITOR: string;
 		NVM_DIR: string;
 		USER: string;
 		LS_COLORS: string;
@@ -167,6 +206,7 @@ declare module '$env/dynamic/private' {
 		PWD: string;
 		npm_lifecycle_event: string;
 		EDITOR: string;
+		OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: string;
 		P9K_SSH: string;
 		npm_package_name: string;
 		P9K_TTY: string;
@@ -185,6 +225,7 @@ declare module '$env/dynamic/private' {
 		LESS: string;
 		LOGNAME: string;
 		npm_lifecycle_script: string;
+		COREPACK_ENABLE_AUTO_PIN: string;
 		SSH_SOCKET_DIR: string;
 		npm_config_user_agent: string;
 		__MISE_SESSION: string;
@@ -192,11 +233,14 @@ declare module '$env/dynamic/private' {
 		HOMEBREW_CELLAR: string;
 		_P9K_SSH_TTY: string;
 		CONDA_CHANGEPS1: string;
+		CLAUDECODE: string;
 		SECURITYSESSIONID: string;
 		__MISE_ZSH_PRECMD_RUN: string;
 		npm_node_execpath: string;
 		npm_config_prefix: string;
 		COLORTERM: string;
+		PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS: string;
+		VITE_USER_NODE_ENV: string;
 		[key: `PUBLIC_${string}`]: undefined;
 		[key: `${string}`]: string | undefined;
 	}

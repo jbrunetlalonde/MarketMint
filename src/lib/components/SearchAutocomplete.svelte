@@ -8,13 +8,20 @@
 		exchange: string;
 	}
 
-	let { placeholder = 'Search for stocks...' } = $props();
+	interface Props {
+		placeholder?: string;
+		onSelect?: (result: SearchResult) => void;
+		compact?: boolean;
+	}
+
+	let { placeholder = 'Search for stocks...', onSelect, compact = false }: Props = $props();
 
 	let searchQuery = $state('');
 	let results = $state<SearchResult[]>([]);
 	let isLoading = $state(false);
 	let isOpen = $state(false);
 	let selectedIndex = $state(-1);
+	let hasSearched = $state(false);
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	let inputElement: HTMLInputElement | null = null;
 	let containerElement: HTMLDivElement | null = null;
@@ -28,19 +35,21 @@
 		if (query.length < 1) {
 			results = [];
 			isOpen = false;
+			hasSearched = false;
 			return;
 		}
 
 		isLoading = true;
 		debounceTimer = setTimeout(async () => {
 			const response = await api.searchSymbols(query, 8);
+			hasSearched = true;
 			if (response.success && response.data) {
 				results = response.data;
-				isOpen = results.length > 0;
+				isOpen = true;
 				selectedIndex = -1;
 			} else {
 				results = [];
-				isOpen = false;
+				isOpen = true;
 			}
 			isLoading = false;
 		}, 300);
@@ -79,17 +88,27 @@
 	}
 
 	function selectResult(result: SearchResult) {
-		searchQuery = result.symbol;
 		isOpen = false;
 		selectedIndex = -1;
-		goto(`/ticker/${result.symbol}`);
+		if (onSelect) {
+			onSelect(result);
+			searchQuery = '';
+		} else {
+			searchQuery = result.symbol;
+			goto(`/ticker/${result.symbol}`);
+		}
 	}
 
 	function handleDirectSubmit() {
 		const ticker = searchQuery.trim().toUpperCase();
 		if (ticker && /^[A-Z0-9.]{1,10}$/.test(ticker)) {
 			isOpen = false;
-			goto(`/ticker/${ticker}`);
+			if (onSelect) {
+				onSelect({ symbol: ticker, name: '', exchange: '' });
+				searchQuery = '';
+			} else {
+				goto(`/ticker/${ticker}`);
+			}
 		}
 	}
 
@@ -108,7 +127,7 @@
 	}
 </script>
 
-<div class="search-container" bind:this={containerElement}>
+<div class="search-container" class:compact bind:this={containerElement}>
 	<div class="search-input-wrapper">
 		<svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 			<circle cx="11" cy="11" r="8"></circle>
@@ -132,24 +151,33 @@
 		{/if}
 	</div>
 
-	{#if isOpen && results.length > 0}
-		<ul class="search-dropdown">
-			{#each results as result, index (result.symbol)}
-				<li>
-					<button
-						type="button"
-						class="search-result"
-						class:selected={index === selectedIndex}
-						onmousedown={() => selectResult(result)}
-						onmouseenter={() => (selectedIndex = index)}
-					>
-						<span class="result-symbol">{result.symbol}</span>
-						<span class="result-name">{result.name}</span>
-						<span class="result-exchange">{result.exchange}</span>
-					</button>
-				</li>
-			{/each}
-		</ul>
+	{#if isOpen}
+		<div class="search-dropdown">
+			{#if results.length > 0}
+				<ul>
+					{#each results as result, index (result.symbol)}
+						<li>
+							<button
+								type="button"
+								class="search-result"
+								class:selected={index === selectedIndex}
+								onmousedown={() => selectResult(result)}
+								onmouseenter={() => (selectedIndex = index)}
+							>
+								<span class="result-symbol">{result.symbol}</span>
+								<span class="result-name">{result.name}</span>
+								<span class="result-exchange">{result.exchange}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{:else if hasSearched && !isLoading}
+				<div class="no-results">
+					<p class="no-results-text">No stocks found for "{searchQuery}"</p>
+					<p class="no-results-hint">Try AAPL, MSFT, GOOGL, or enter a ticker symbol</p>
+				</div>
+			{/if}
+		</div>
 	{/if}
 </div>
 
@@ -181,7 +209,7 @@
 		font-size: 0.9rem;
 		border: 1px solid var(--color-border);
 		border-radius: 2rem;
-		background: white;
+		background: var(--color-newsprint);
 		color: var(--color-ink);
 		transition: border-color 0.2s, box-shadow 0.2s;
 	}
@@ -193,7 +221,7 @@
 	.search-input:focus {
 		outline: none;
 		border-color: var(--color-ink);
-		box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.1);
+		box-shadow: 0 0 0 3px rgba(128, 128, 128, 0.15);
 	}
 
 	.search-spinner {
@@ -218,16 +246,38 @@
 		top: calc(100% + 0.5rem);
 		left: 0;
 		right: 0;
-		background: white;
+		background: var(--color-newsprint);
 		border: 1px solid var(--color-border);
 		border-radius: 0.5rem;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-		list-style: none;
-		padding: 0.5rem 0;
-		margin: 0;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 		max-height: 400px;
 		overflow-y: auto;
 		z-index: 1000;
+	}
+
+	.search-dropdown ul {
+		list-style: none;
+		padding: 0.5rem 0;
+		margin: 0;
+	}
+
+	.no-results {
+		padding: 1.5rem 1rem;
+		text-align: center;
+	}
+
+	.no-results-text {
+		font-family: var(--font-mono);
+		font-size: 0.875rem;
+		color: var(--color-ink-light);
+		margin: 0 0 0.5rem 0;
+	}
+
+	.no-results-hint {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+		margin: 0;
 	}
 
 	.search-result {
@@ -271,5 +321,62 @@
 		padding: 0.125rem 0.375rem;
 		background: var(--color-newsprint);
 		border-radius: 0.25rem;
+	}
+
+	/* Compact variant for navbar use */
+	.compact .search-input {
+		padding: 0.4rem 2rem 0.4rem 2rem;
+		font-size: 0.75rem;
+		border-radius: 0.25rem;
+		border-color: var(--color-border);
+	}
+
+	.compact .search-input:focus {
+		border-color: var(--color-ink-muted);
+		box-shadow: none;
+	}
+
+	.compact .search-icon {
+		left: 0.5rem;
+		width: 0.875rem;
+		height: 0.875rem;
+	}
+
+	.compact .search-spinner {
+		right: 0.5rem;
+		width: 0.75rem;
+		height: 0.75rem;
+	}
+
+	.compact .search-dropdown {
+		border-radius: 0.25rem;
+		min-width: 280px;
+		left: auto;
+		right: 0;
+	}
+
+	.compact .search-result {
+		padding: 0.5rem 0.75rem;
+		font-size: 0.75rem;
+	}
+
+	.compact .result-symbol {
+		min-width: 45px;
+	}
+
+	.compact .result-exchange {
+		font-size: 0.625rem;
+	}
+
+	.compact .no-results {
+		padding: 1rem 0.75rem;
+	}
+
+	.compact .no-results-text {
+		font-size: 0.75rem;
+	}
+
+	.compact .no-results-hint {
+		font-size: 0.625rem;
 	}
 </style>
