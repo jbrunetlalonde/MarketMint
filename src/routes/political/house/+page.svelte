@@ -147,17 +147,17 @@
 		<section class="col-span-4">
 			<div class="card">
 				<h2 class="headline headline-md mb-4">House Stats</h2>
-				<div class="grid grid-cols-3 gap-4">
-					<div class="text-center p-3 bg-newsprint-dark dark:bg-gray-800 rounded">
+				<div class="stats-grid">
+					<div class="stat-box">
 						<p class="text-2xl font-bold">{stats.totalTrades}</p>
 						<p class="text-xs text-ink-muted">Total Trades</p>
 					</div>
-					<div class="text-center p-3 bg-newsprint-dark dark:bg-gray-800 rounded">
-						<p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{stats.buyCount}</p>
+					<div class="stat-box">
+						<p class="text-2xl font-bold text-emerald-600">{stats.buyCount}</p>
 						<p class="text-xs text-ink-muted">Buys</p>
 					</div>
-					<div class="text-center p-3 bg-newsprint-dark dark:bg-gray-800 rounded">
-						<p class="text-2xl font-bold text-red-600 dark:text-red-400">{stats.sellCount}</p>
+					<div class="stat-box">
+						<p class="text-2xl font-bold text-red-600">{stats.sellCount}</p>
 						<p class="text-xs text-ink-muted">Sells</p>
 					</div>
 				</div>
@@ -168,7 +168,7 @@
 						{#each stats.topTraders as [name, count] (name)}
 							<a
 								href="/political/member/{encodeURIComponent(name)}"
-								class="flex items-center justify-between p-2 bg-newsprint-dark dark:bg-gray-800 rounded hover:bg-newsprint dark:hover:bg-gray-700 transition-colors"
+								class="stat-row"
 							>
 								<span class="text-sm truncate">{name}</span>
 								<span class="badge">{count}</span>
@@ -183,7 +183,7 @@
 						{#each stats.topStocks as [ticker, count] (ticker)}
 							<a
 								href="/ticker/{ticker}"
-								class="flex items-center justify-between p-2 bg-newsprint-dark dark:bg-gray-800 rounded hover:bg-newsprint dark:hover:bg-gray-700 transition-colors"
+								class="stat-row"
 							>
 								<span class="ticker-symbol">{ticker}</span>
 								<span class="badge">{count}</span>
@@ -336,3 +336,48 @@
 		</p>
 	</section>
 </div>
+
+<style>
+	.stats-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 1rem;
+	}
+
+	.stat-box {
+		text-align: center;
+		padding: 0.75rem;
+		background-color: var(--color-newsprint-dark, #e0e0d8);
+		border: 1px solid var(--color-border, #aaa);
+	}
+
+	[data-theme="dark"] .stat-box {
+		background-color: var(--color-newsprint-dark, #1e1e1e);
+		border-color: var(--color-border, #3d3d3d);
+	}
+
+	.stat-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.5rem;
+		background-color: var(--color-newsprint-dark, #e0e0d8);
+		border: 1px solid var(--color-border, #aaa);
+		text-decoration: none;
+		color: inherit;
+		transition: background-color 0.15s;
+	}
+
+	.stat-row:hover {
+		background-color: var(--color-newsprint, #f5f5f0);
+	}
+
+	[data-theme="dark"] .stat-row {
+		background-color: var(--color-newsprint-dark, #1e1e1e);
+		border-color: var(--color-border, #3d3d3d);
+	}
+
+	[data-theme="dark"] .stat-row:hover {
+		background-color: #2a2a2a;
+	}
+</style>

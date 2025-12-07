@@ -130,16 +130,16 @@
 			<div class="card">
 				<h2 class="headline headline-md mb-4">Market Overview</h2>
 				<div class="grid grid-cols-3 gap-4">
-					<div class="text-center p-3 bg-newsprint-dark dark:bg-gray-800 rounded">
+					<div class="stat-box">
 						<p class="text-2xl font-bold">{stats.totalTrades}</p>
 						<p class="text-xs text-ink-muted">Total Trades</p>
 					</div>
-					<div class="text-center p-3 bg-newsprint-dark dark:bg-gray-800 rounded">
-						<p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{stats.purchaseCount}</p>
+					<div class="stat-box">
+						<p class="text-2xl font-bold text-emerald-600">{stats.purchaseCount}</p>
 						<p class="text-xs text-ink-muted">Purchases</p>
 					</div>
-					<div class="text-center p-3 bg-newsprint-dark dark:bg-gray-800 rounded">
-						<p class="text-2xl font-bold text-red-600 dark:text-red-400">{stats.saleCount}</p>
+					<div class="stat-box">
+						<p class="text-2xl font-bold text-red-600">{stats.saleCount}</p>
 						<p class="text-xs text-ink-muted">Sales</p>
 					</div>
 				</div>
@@ -148,9 +148,9 @@
 					<h3 class="byline mt-4 mb-2">Largest Buyers</h3>
 					<div class="space-y-1">
 						{#each stats.topBuyers as buyer (buyer.name)}
-							<div class="flex items-center justify-between p-2 bg-newsprint-dark dark:bg-gray-800 rounded">
+							<div class="stat-row">
 								<span class="text-sm truncate">{buyer.name}</span>
-								<span class="text-xs text-emerald-600 dark:text-emerald-400">{formatValue(buyer.value)}</span>
+								<span class="text-xs text-emerald-600">{formatValue(buyer.value)}</span>
 							</div>
 						{/each}
 					</div>
@@ -160,9 +160,9 @@
 					<h3 class="byline mt-4 mb-2">Largest Sellers</h3>
 					<div class="space-y-1">
 						{#each stats.topSellers as seller (seller.name)}
-							<div class="flex items-center justify-between p-2 bg-newsprint-dark dark:bg-gray-800 rounded">
+							<div class="stat-row">
 								<span class="text-sm truncate">{seller.name}</span>
-								<span class="text-xs text-red-600 dark:text-red-400">{formatValue(seller.value)}</span>
+								<span class="text-xs text-red-600">{formatValue(seller.value)}</span>
 							</div>
 						{/each}
 					</div>
@@ -364,6 +364,32 @@
 </div>
 
 <style>
+	.stat-box {
+		text-align: center;
+		padding: 0.75rem;
+		background-color: var(--color-newsprint-dark, #e0e0d8);
+		border: 1px solid var(--color-border, #aaa);
+	}
+
+	[data-theme="dark"] .stat-box {
+		background-color: var(--color-newsprint-dark, #1e1e1e);
+		border-color: var(--color-border, #3d3d3d);
+	}
+
+	.stat-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.5rem;
+		background-color: var(--color-newsprint-dark, #e0e0d8);
+		border: 1px solid var(--color-border, #aaa);
+	}
+
+	[data-theme="dark"] .stat-row {
+		background-color: var(--color-newsprint-dark, #1e1e1e);
+		border-color: var(--color-border, #3d3d3d);
+	}
+
 	.insider-card {
 		display: flex;
 		flex-direction: column;
