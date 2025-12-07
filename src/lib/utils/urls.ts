@@ -4,15 +4,16 @@
 
 /**
  * Get the base URL for portrait images
- * Uses VITE_PORTRAIT_BASE env var in production, defaults to localhost in dev
+ * Uses VITE_PORTRAIT_BASE env var in production, defaults to localhost:5001 in dev
+ * Portraits are served from the backend API server at /portraits
  */
 export function getPortraitBase(): string {
 	if (typeof window !== 'undefined') {
-		// Client-side: check for env var or use relative path
-		return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:8080';
+		// Client-side: check for env var or use API base
+		return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:5001';
 	}
 	// Server-side
-	return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:8080';
+	return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:5001';
 }
 
 /**

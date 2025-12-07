@@ -200,6 +200,56 @@ export const api = {
 			}>
 		>(`/api/financials/${ticker}/income?period=${period}&limit=${limit}`, { token }),
 
+	getBalanceSheet: (ticker: string, period = 'annual', limit = 5, token?: string) =>
+		request<
+			Array<{
+				date: string;
+				period: string;
+				cashAndCashEquivalents: number;
+				totalAssets: number;
+				totalLiabilities: number;
+				totalEquity: number;
+				totalDebt: number;
+				netDebt: number;
+			}>
+		>(`/api/financials/${ticker}/balance?period=${period}&limit=${limit}`, { token }),
+
+	getCashFlow: (ticker: string, period = 'annual', limit = 5, token?: string) =>
+		request<
+			Array<{
+				date: string;
+				period: string;
+				netIncome: number;
+				operatingCashFlow: number;
+				investingCashFlow: number;
+				financingCashFlow: number;
+				freeCashFlow: number;
+				capitalExpenditure: number;
+			}>
+		>(`/api/financials/${ticker}/cashflow?period=${period}&limit=${limit}`, { token }),
+
+	getRevenueSegments: (ticker: string, period = 'annual', token?: string) =>
+		request<
+			Array<{
+				date: string;
+				segments: Array<{
+					name: string;
+					revenue: number;
+				}>;
+			}>
+		>(`/api/financials/${ticker}/segments?period=${period}`, { token }),
+
+	getInstitutionalHolders: (ticker: string, token?: string) =>
+		request<
+			Array<{
+				holder: string;
+				shares: number;
+				dateReported: string;
+				change: number;
+				changePercentage: number;
+			}>
+		>(`/api/financials/${ticker}/institutional`, { token }),
+
 	getHistoricalPrices: (ticker: string, period = '1y', token?: string) =>
 		request<{
 			ticker: string;
@@ -837,6 +887,19 @@ export const api = {
 		return response.blob();
 	},
 
+	// Earnings Calendar
+	getEarningsCalendar: (days = 7) =>
+		request<
+			Array<{
+				symbol: string;
+				date: string;
+				time: string;
+				epsEstimate: number | null;
+				revenue: number | null;
+				revenueEstimate: number | null;
+			}>
+		>(`/api/financials/earnings/calendar?days=${days}`),
+
 	// Search
 	searchSymbols: (query: string, limit = 8) =>
 		request<Array<{ symbol: string; name: string; exchange: string }>>(
@@ -919,7 +982,96 @@ export const api = {
 		request<{ message: string }>(`/api/portfolio/${id}`, {
 			method: 'DELETE',
 			token
-		})
+		}),
+
+	// Insider Trading
+	getInsiderTrades: (options?: { ticker?: string; transactionType?: string; limit?: number; page?: number }, token?: string) => {
+		const params = new URLSearchParams();
+		if (options?.ticker) params.set('ticker', options.ticker);
+		if (options?.transactionType) params.set('transactionType', options.transactionType);
+		if (options?.limit) params.set('limit', String(options.limit));
+		if (options?.page) params.set('page', String(options.page));
+		const queryString = params.toString();
+		return request<
+			Array<{
+				id: number;
+				symbol: string;
+				companyName: string;
+				reporterName: string;
+				reporterTitle: string;
+				transactionType: string;
+				transactionDate: string;
+				filingDate: string;
+				sharesTransacted: number;
+				sharePrice: number;
+				totalValue: number;
+				sharesOwned: number;
+				isMock?: boolean;
+			}>
+		>(`/api/insider/trades${queryString ? `?${queryString}` : ''}`, { token });
+	},
+
+	getInsiderTradesByTicker: (ticker: string, limit?: number, token?: string) =>
+		request<
+			Array<{
+				id: number;
+				symbol: string;
+				companyName: string;
+				reporterName: string;
+				reporterTitle: string;
+				transactionType: string;
+				transactionDate: string;
+				filingDate: string;
+				sharesTransacted: number;
+				sharePrice: number;
+				totalValue: number;
+				sharesOwned: number;
+			}>
+		>(`/api/insider/trades/${ticker}${limit ? `?limit=${limit}` : ''}`, { token }),
+
+	getInsiderStats: (token?: string) =>
+		request<{
+			totalTrades: number;
+			purchaseCount: number;
+			saleCount: number;
+			totalValue: number;
+			topBuyers: Array<{ name: string; value: number }>;
+			topSellers: Array<{ name: string; value: number }>;
+		}>('/api/insider/stats', { token }),
+
+	// Political Chamber Stats
+	getSenateStats: (token?: string) =>
+		request<{
+			totalTrades: number;
+			buyCount: number;
+			sellCount: number;
+			uniqueTraders: number;
+			uniqueStocks: number;
+			topTraders: Array<{ name: string; count: number }>;
+			topStocks: Array<{ ticker: string; count: number }>;
+		}>('/api/political/senate/stats', { token }),
+
+	getHouseStats: (token?: string) =>
+		request<{
+			totalTrades: number;
+			buyCount: number;
+			sellCount: number;
+			uniqueTraders: number;
+			uniqueStocks: number;
+			topTraders: Array<{ name: string; count: number }>;
+			topStocks: Array<{ ticker: string; count: number }>;
+		}>('/api/political/house/stats', { token }),
+
+	getOfficialStats: (name: string, token?: string) =>
+		request<{
+			totalTrades: number;
+			buyCount: number;
+			sellCount: number;
+			uniqueStocks: number;
+			topStocks: Array<{ ticker: string; count: number }>;
+			avgReportingDelay: number | null;
+			latestTrade: string | null;
+		}>(`/api/political/officials/${encodeURIComponent(name)}/stats`, { token })
 };
 
 export default api;

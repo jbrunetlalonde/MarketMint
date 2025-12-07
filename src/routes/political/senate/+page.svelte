@@ -1,0 +1,335 @@
+<script lang="ts">
+	import { formatDate } from '$lib/utils/formatters';
+	import api from '$lib/utils/api';
+	import PoliticalTradeCard from '$lib/components/PoliticalTradeCard.svelte';
+	import { getCongressPortraitUrl } from '$lib/utils/urls';
+
+	interface PoliticalTrade {
+		id: number;
+		officialName: string;
+		ticker: string;
+		assetDescription?: string | null;
+		transactionType: string;
+		transactionDate: string;
+		reportedDate: string;
+		amountDisplay: string;
+		party?: string | null;
+		title?: string | null;
+		state?: string | null;
+		portraitUrl?: string | null;
+		chamber?: string | null;
+		isMock?: boolean;
+	}
+
+	let trades = $state<PoliticalTrade[]>([]);
+	let loading = $state(true);
+	let error = $state<string | null>(null);
+
+	let filterParty = $state('all');
+	let filterType = $state('all');
+	let filterTicker = $state('');
+	let viewMode = $state<'table' | 'cards'>('cards');
+
+	const filteredTrades = $derived.by(() => {
+		let result = trades.filter((t) => {
+			const title = t.title?.toLowerCase() || '';
+			return title.includes('senator');
+		});
+
+		if (filterParty !== 'all') {
+			result = result.filter((t) => {
+				const party = t.party?.toLowerCase() || '';
+				if (filterParty === 'D') return party.includes('democrat') || party === 'd';
+				if (filterParty === 'R') return party.includes('republican') || party === 'r';
+				return true;
+			});
+		}
+
+		if (filterType !== 'all') {
+			result = result.filter((t) => t.transactionType === filterType);
+		}
+
+		if (filterTicker.trim()) {
+			const search = filterTicker.trim().toUpperCase();
+			result = result.filter((t) => t.ticker.toUpperCase().includes(search));
+		}
+
+		return result;
+	});
+
+	// Stats for Senate
+	const stats = $derived.by(() => {
+		const senateTrades = trades.filter((t) => t.title?.toLowerCase().includes('senator'));
+		if (senateTrades.length === 0) return null;
+
+		const buyCount = senateTrades.filter((t) => t.transactionType === 'BUY').length;
+		const sellCount = senateTrades.filter((t) => t.transactionType === 'SELL').length;
+
+		const topTraders: Record<string, number> = {};
+		senateTrades.forEach((t) => {
+			topTraders[t.officialName] = (topTraders[t.officialName] || 0) + 1;
+		});
+
+		const sortedTraders = Object.entries(topTraders)
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, 5);
+
+		const topStocks: Record<string, number> = {};
+		senateTrades.forEach((t) => {
+			topStocks[t.ticker] = (topStocks[t.ticker] || 0) + 1;
+		});
+
+		const sortedStocks = Object.entries(topStocks)
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, 5);
+
+		return {
+			totalTrades: senateTrades.length,
+			buyCount,
+			sellCount,
+			topTraders: sortedTraders,
+			topStocks: sortedStocks
+		};
+	});
+
+	async function fetchTrades() {
+		loading = true;
+		error = null;
+
+		try {
+			const response = await api.getPoliticalTrades({ chamber: 'senate', limit: 200 });
+			if (response.success && response.data) {
+				trades = response.data;
+			} else {
+				error = 'Failed to load Senate trades';
+			}
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to load trades';
+		} finally {
+			loading = false;
+		}
+	}
+
+	function getPartyAbbrev(party?: string | null): string {
+		if (!party) return '?';
+		const p = party.toLowerCase();
+		if (p.includes('democrat')) return 'D';
+		if (p.includes('republican')) return 'R';
+		return party.charAt(0).toUpperCase();
+	}
+
+	function getPortraitUrl(name: string): string {
+		return getCongressPortraitUrl(name, 'senate');
+	}
+
+	$effect(() => {
+		fetchTrades();
+	});
+</script>
+
+<svelte:head>
+	<title>Senate Trades - MarketMint</title>
+</svelte:head>
+
+<div class="newspaper-grid">
+	<section class="col-span-full">
+		<h1 class="headline headline-xl">Senate Trading Activity</h1>
+		<p class="text-ink-muted mt-2">
+			Track stock trades made by U.S. Senators. Data sourced from public STOCK Act filings.
+		</p>
+	</section>
+
+	<!-- Stats Cards -->
+	{#if stats}
+		<section class="col-span-4">
+			<div class="card">
+				<h2 class="headline headline-md mb-4">Senate Stats</h2>
+				<div class="grid grid-cols-3 gap-4">
+					<div class="text-center p-3 bg-newsprint-dark dark:bg-gray-800 rounded">
+						<p class="text-2xl font-bold">{stats.totalTrades}</p>
+						<p class="text-xs text-ink-muted">Total Trades</p>
+					</div>
+					<div class="text-center p-3 bg-newsprint-dark dark:bg-gray-800 rounded">
+						<p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{stats.buyCount}</p>
+						<p class="text-xs text-ink-muted">Buys</p>
+					</div>
+					<div class="text-center p-3 bg-newsprint-dark dark:bg-gray-800 rounded">
+						<p class="text-2xl font-bold text-red-600 dark:text-red-400">{stats.sellCount}</p>
+						<p class="text-xs text-ink-muted">Sells</p>
+					</div>
+				</div>
+
+				{#if stats.topTraders.length > 0}
+					<h3 class="byline mt-4 mb-2">Most Active Senators</h3>
+					<div class="space-y-1">
+						{#each stats.topTraders as [name, count] (name)}
+							<a
+								href="/political/member/{encodeURIComponent(name)}"
+								class="flex items-center justify-between p-2 bg-newsprint-dark dark:bg-gray-800 rounded hover:bg-newsprint dark:hover:bg-gray-700 transition-colors"
+							>
+								<span class="text-sm truncate">{name}</span>
+								<span class="badge">{count}</span>
+							</a>
+						{/each}
+					</div>
+				{/if}
+
+				{#if stats.topStocks.length > 0}
+					<h3 class="byline mt-4 mb-2">Most Traded Stocks</h3>
+					<div class="space-y-1">
+						{#each stats.topStocks as [ticker, count] (ticker)}
+							<a
+								href="/ticker/{ticker}"
+								class="flex items-center justify-between p-2 bg-newsprint-dark dark:bg-gray-800 rounded hover:bg-newsprint dark:hover:bg-gray-700 transition-colors"
+							>
+								<span class="ticker-symbol">{ticker}</span>
+								<span class="badge">{count}</span>
+							</a>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		</section>
+	{/if}
+
+	<!-- Filters and Trades -->
+	<section class={stats ? 'col-span-8' : 'col-span-full'}>
+		<div class="card mb-4">
+			<div class="flex gap-4 flex-wrap items-end">
+				<div>
+					<label for="filter-party" class="byline block mb-1">Party</label>
+					<select id="filter-party" bind:value={filterParty} class="input">
+						<option value="all">All Parties</option>
+						<option value="D">Democrat</option>
+						<option value="R">Republican</option>
+					</select>
+				</div>
+				<div>
+					<label for="filter-type" class="byline block mb-1">Transaction Type</label>
+					<select id="filter-type" bind:value={filterType} class="input">
+						<option value="all">All Types</option>
+						<option value="BUY">Buy</option>
+						<option value="SELL">Sell</option>
+					</select>
+				</div>
+				<div>
+					<label for="filter-ticker" class="byline block mb-1">Ticker</label>
+					<input
+						type="text"
+						id="filter-ticker"
+						bind:value={filterTicker}
+						placeholder="Search ticker..."
+						class="input"
+					/>
+				</div>
+				<button onclick={fetchTrades} class="btn btn-secondary" disabled={loading}>
+					{loading ? 'Loading...' : 'Refresh'}
+				</button>
+
+				<div class="ml-auto flex gap-1">
+					<button
+						onclick={() => (viewMode = 'table')}
+						class="btn btn-sm {viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}"
+						title="Table view"
+					>
+						Table
+					</button>
+					<button
+						onclick={() => (viewMode = 'cards')}
+						class="btn btn-sm {viewMode === 'cards' ? 'btn-primary' : 'btn-ghost'}"
+						title="Card view"
+					>
+						Cards
+					</button>
+				</div>
+			</div>
+		</div>
+
+		{#if loading && trades.length === 0}
+			<div class="card text-center py-8">
+				<p class="text-ink-muted">Loading Senate trades...</p>
+			</div>
+		{:else if error}
+			<div class="card text-center py-8">
+				<p class="text-red-600 mb-4">{error}</p>
+				<button onclick={fetchTrades} class="btn btn-primary">Try Again</button>
+			</div>
+		{:else if filteredTrades.length === 0}
+			<div class="card text-center py-8">
+				<p class="text-ink-muted">No Senate trades found matching your filters.</p>
+			</div>
+		{:else if viewMode === 'cards'}
+			<div class="grid gap-4 md:grid-cols-2">
+				{#each filteredTrades as trade (trade.id)}
+					<PoliticalTradeCard {trade} />
+				{/each}
+			</div>
+		{:else}
+			<div class="card overflow-x-auto">
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>Senator</th>
+							<th>Ticker</th>
+							<th>Type</th>
+							<th>Amount</th>
+							<th>Transaction</th>
+							<th>Reported</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each filteredTrades as trade (trade.id)}
+							<tr>
+								<td>
+									<div class="flex items-center gap-3">
+										<img
+											src={getPortraitUrl(trade.officialName)}
+											alt={trade.officialName}
+											class="w-10 h-12 object-contain border border-ink-light bg-newsprint flex-shrink-0"
+											onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+										/>
+										<div>
+											<a href="/political/member/{encodeURIComponent(trade.officialName)}" class="font-semibold hover:underline">{trade.officialName}</a>
+											<div class="text-xs text-ink-muted">
+												{getPartyAbbrev(trade.party)}{#if trade.state}-{trade.state}{/if}
+											</div>
+										</div>
+									</div>
+								</td>
+								<td>
+									<a href="/ticker/{trade.ticker}" class="ticker-symbol">
+										{trade.ticker}
+									</a>
+								</td>
+								<td>
+									<span
+										class={trade.transactionType === 'BUY'
+											? 'badge badge-gain'
+											: trade.transactionType === 'SELL'
+												? 'badge badge-loss'
+												: 'badge'}
+									>
+										{trade.transactionType}
+									</span>
+								</td>
+								<td class="font-semibold whitespace-nowrap">{trade.amountDisplay}</td>
+								<td class="whitespace-nowrap">
+									{trade.transactionDate ? formatDate(trade.transactionDate) : '-'}
+								</td>
+								<td class="text-ink-muted whitespace-nowrap">
+									{trade.reportedDate ? formatDate(trade.reportedDate) : '-'}
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{/if}
+	</section>
+
+	<section class="col-span-full">
+		<p class="byline text-center mt-4">
+			Data is for informational purposes only. Not financial advice.
+		</p>
+	</section>
+</div>

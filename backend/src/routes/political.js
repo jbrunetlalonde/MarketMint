@@ -416,6 +416,164 @@ router.post('/refresh', async (req, res, next) => {
 });
 
 /**
+ * GET /api/political/senate/stats
+ * Get Senate trading statistics
+ */
+router.get('/senate/stats', async (req, res, next) => {
+  try {
+    const trades = await politicalTracker.getRecentTrades({ chamber: 'senate', limit: 500 });
+
+    const senateTrades = trades.filter(t =>
+      t.title?.toLowerCase().includes('senator')
+    );
+
+    if (senateTrades.length === 0) {
+      const mockTrades = getMockTrades({ chamber: 'senate', limit: 100 });
+      return res.json({
+        success: true,
+        data: computeStats(mockTrades)
+      });
+    }
+
+    res.json({
+      success: true,
+      data: computeStats(senateTrades)
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/political/house/stats
+ * Get House trading statistics
+ */
+router.get('/house/stats', async (req, res, next) => {
+  try {
+    const trades = await politicalTracker.getRecentTrades({ chamber: 'house', limit: 500 });
+
+    const houseTrades = trades.filter(t => {
+      const title = t.title?.toLowerCase() || '';
+      return title.includes('representative') || title.includes('rep.');
+    });
+
+    if (houseTrades.length === 0) {
+      const mockTrades = getMockTrades({ chamber: 'house', limit: 100 });
+      return res.json({
+        success: true,
+        data: computeStats(mockTrades)
+      });
+    }
+
+    res.json({
+      success: true,
+      data: computeStats(houseTrades)
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/political/officials/:name/stats
+ * Get statistics for a specific official
+ */
+router.get('/officials/:name/stats', async (req, res, next) => {
+  try {
+    const { name } = req.params;
+    const decodedName = decodeURIComponent(name);
+
+    const allTrades = await politicalTracker.getRecentTrades({ limit: 500 });
+    const officialTrades = allTrades.filter(t =>
+      t.officialName.toLowerCase() === decodedName.toLowerCase()
+    );
+
+    if (officialTrades.length === 0) {
+      throw new ApiError(404, 'No trades found for this official');
+    }
+
+    const buyCount = officialTrades.filter(t => t.transactionType === 'BUY').length;
+    const sellCount = officialTrades.filter(t => t.transactionType === 'SELL').length;
+
+    const tickerCounts = {};
+    const sectorCounts = {};
+
+    officialTrades.forEach(t => {
+      tickerCounts[t.ticker] = (tickerCounts[t.ticker] || 0) + 1;
+    });
+
+    const topStocks = Object.entries(tickerCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([ticker, count]) => ({ ticker, count }));
+
+    let totalGap = 0;
+    let gapCount = 0;
+    officialTrades.forEach(t => {
+      if (t.transactionDate && t.reportedDate) {
+        const gap = Math.ceil(
+          (new Date(t.reportedDate).getTime() - new Date(t.transactionDate).getTime()) /
+            (1000 * 60 * 60 * 24)
+        );
+        if (gap > 0) {
+          totalGap += gap;
+          gapCount++;
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalTrades: officialTrades.length,
+        buyCount,
+        sellCount,
+        uniqueStocks: Object.keys(tickerCounts).length,
+        topStocks,
+        avgReportingDelay: gapCount > 0 ? Math.round(totalGap / gapCount) : null,
+        latestTrade: officialTrades[0]?.transactionDate || null
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Helper function to compute stats from trades
+function computeStats(trades) {
+  const buyCount = trades.filter(t => t.transactionType === 'BUY').length;
+  const sellCount = trades.filter(t => t.transactionType === 'SELL').length;
+
+  const traderCounts = {};
+  const tickerCounts = {};
+
+  trades.forEach(t => {
+    traderCounts[t.officialName] = (traderCounts[t.officialName] || 0) + 1;
+    tickerCounts[t.ticker] = (tickerCounts[t.ticker] || 0) + 1;
+  });
+
+  const topTraders = Object.entries(traderCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, count]) => ({ name, count }));
+
+  const topStocks = Object.entries(tickerCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([ticker, count]) => ({ ticker, count }));
+
+  return {
+    totalTrades: trades.length,
+    buyCount,
+    sellCount,
+    uniqueTraders: Object.keys(traderCounts).length,
+    uniqueStocks: Object.keys(tickerCounts).length,
+    topTraders,
+    topStocks
+  };
+}
+
+/**
  * GET /api/political/cache-stats
  * Get cache statistics
  */
