@@ -74,7 +74,7 @@ app.use(cors({
       callback(null, true);
     } else if (config.nodeEnv === 'development') {
       // In development, log but allow unknown origins
-      console.warn(`CORS: Allowing unknown origin in dev mode: ${origin}`);
+      logger.warn('CORS: Allowing unknown origin in dev mode', { origin });
       callback(null, true);
     } else {
       callback(new Error(`CORS not allowed for origin: ${origin}`));

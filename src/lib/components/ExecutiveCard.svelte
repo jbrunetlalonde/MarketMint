@@ -38,7 +38,7 @@
 				<div class="ceo-section">
 					<div class="ceo-portrait">
 						{#if ceoPortrait}
-							<img src={ceoPortrait} alt={ceo.name} class="portrait-img" />
+							<img src={ceoPortrait} alt={ceo.name} class="portrait-img" loading="lazy" decoding="async" />
 						{:else}
 							<div class="portrait-placeholder">
 								{ceo.name

@@ -5,6 +5,8 @@ import fmp from '../services/financialModelPrep.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import logger from '../config/logger.js';
+import { getMockFinancials } from '../fixtures/financial-mocks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
@@ -16,7 +18,7 @@ try {
   const raw = fs.readFileSync(ceoPath, 'utf-8');
   ceoData = JSON.parse(raw).ceos || [];
 } catch (err) {
-  console.warn('Could not load CEO data:', err.message);
+  logger.warn('Could not load CEO data', { error: err.message });
 }
 
 // Build ticker -> CEO portrait URL map
@@ -33,57 +35,6 @@ for (const ceo of ceoData) {
 
 function getCeoPortrait(ticker) {
   return ceoPortraitMap.get(ticker.toUpperCase()) || null;
-}
-
-// Fallback mock data when FMP fails
-const MOCK_FINANCIALS = {
-  AAPL: {
-    ticker: 'AAPL',
-    companyName: 'Apple Inc.',
-    sector: 'Technology',
-    industry: 'Consumer Electronics',
-    marketCap: 2780000000000,
-    peRatio: 28.5,
-    eps: 6.26,
-    dividend: 0.96,
-    dividendYield: 0.54,
-    revenue: 383285000000,
-    netIncome: 96995000000,
-    profitMargin: 25.31,
-    roe: 160.58,
-    debtToEquity: 199.42,
-    isMock: true
-  },
-  MSFT: {
-    ticker: 'MSFT',
-    companyName: 'Microsoft Corporation',
-    sector: 'Technology',
-    industry: 'Software - Infrastructure',
-    marketCap: 2810000000000,
-    peRatio: 35.2,
-    eps: 10.76,
-    dividend: 3.00,
-    dividendYield: 0.79,
-    revenue: 211915000000,
-    netIncome: 72361000000,
-    profitMargin: 34.15,
-    roe: 38.60,
-    debtToEquity: 42.15,
-    isMock: true
-  }
-};
-
-function getMockFinancials(ticker) {
-  if (MOCK_FINANCIALS[ticker]) {
-    return MOCK_FINANCIALS[ticker];
-  }
-  return {
-    ticker,
-    companyName: `${ticker} Inc.`,
-    sector: 'Unknown',
-    industry: 'Unknown',
-    isMock: true
-  };
 }
 
 /**
@@ -134,7 +85,7 @@ router.get('/:ticker', async (req, res, next) => {
         }
       });
     } catch (err) {
-      console.warn(`FMP failed for ${validation.ticker}, using mock data:`, err.message);
+      logger.warn('FMP failed, using mock data', { ticker: validation.ticker, error: err.message });
       res.json({
         success: true,
         data: getMockFinancials(validation.ticker)
@@ -162,7 +113,7 @@ router.get('/:ticker/profile', async (req, res, next) => {
       const profile = await fmp.getProfile(validation.ticker);
       res.json({ success: true, data: profile });
     } catch (err) {
-      console.warn(`FMP profile failed for ${validation.ticker}:`, err.message);
+      logger.warn('FMP profile failed', { ticker: validation.ticker, error: err.message });
       res.json({
         success: true,
         data: {
@@ -599,7 +550,7 @@ router.get('/earnings/calendar', async (req, res, next) => {
       const data = await fmp.getEarningsCalendar(from, to);
       res.json({ success: true, data });
     } catch (err) {
-      console.warn('Earnings calendar fetch failed:', err.message);
+      logger.warn('Earnings calendar fetch failed', { error: err.message });
       res.json({ success: true, data: [] });
     }
   } catch (err) {

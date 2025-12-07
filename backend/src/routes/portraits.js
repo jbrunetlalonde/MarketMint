@@ -1,5 +1,6 @@
 import express from 'express';
 import { portraits } from '../models/index.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -24,7 +25,7 @@ router.get('/ceo/:name', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching CEO portrait:', error.message);
+    logger.error('Error fetching CEO portrait', { error: error.message });
     res.status(500).json({
       success: false,
       error: { message: 'Failed to fetch CEO portrait' }
@@ -55,7 +56,7 @@ router.get('/official/:name', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching official portrait:', error.message);
+    logger.error('Error fetching official portrait', { error: error.message });
     res.status(500).json({
       success: false,
       error: { message: 'Failed to fetch official portrait' }
@@ -76,7 +77,7 @@ router.get('/ceos', async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error('Error fetching CEOs:', error.message);
+    logger.error('Error fetching CEOs', { error: error.message });
     res.status(500).json({
       success: false,
       error: { message: 'Failed to fetch CEOs' }
@@ -99,7 +100,7 @@ router.get('/officials', async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error('Error fetching officials:', error.message);
+    logger.error('Error fetching officials', { error: error.message });
     res.status(500).json({
       success: false,
       error: { message: 'Failed to fetch officials' }

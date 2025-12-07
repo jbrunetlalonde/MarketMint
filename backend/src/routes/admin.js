@@ -5,6 +5,7 @@ import { validateTicker } from '../models/index.js';
 import { query } from '../config/database.js';
 import fmp from '../services/financialModelPrep.js';
 import priceHistory from '../services/priceHistory.js';
+import logger from '../config/logger.js';
 
 const router = Router();
 
@@ -182,7 +183,7 @@ router.post('/refresh/ohlc', async (req, res, next) => {
       .map(v => v.ticker);
 
     // Start preload in background
-    priceHistory.preloadHistoricalData(validTickers, period).catch(console.error);
+    priceHistory.preloadHistoricalData(validTickers, period).catch(err => logger.error('Preload historical data failed', { error: err.message }));
 
     res.json({
       success: true,

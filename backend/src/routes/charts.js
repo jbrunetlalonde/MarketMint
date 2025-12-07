@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { ApiError } from '../middleware/errorHandler.js';
 import { validateTicker } from '../models/index.js';
 import priceHistory from '../services/priceHistory.js';
+import logger from '../config/logger.js';
 
 const router = Router();
 
@@ -195,7 +196,7 @@ router.post('/preload', async (req, res, next) => {
     }
 
     // Start preload in background
-    priceHistory.preloadHistoricalData(validTickers, period).catch(console.error);
+    priceHistory.preloadHistoricalData(validTickers, period).catch(err => logger.error('Preload historical data failed', { error: err.message }));
 
     res.json({
       success: true,

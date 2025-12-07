@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { ApiError } from '../middleware/errorHandler.js';
 import { validateTicker } from '../models/index.js';
 import yahooFinance from '../services/yahooFinance.js';
+import logger from '../config/logger.js';
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.get('/:ticker', async (req, res, next) => {
     try {
       quote = await yahooFinance.getQuote(validation.ticker);
     } catch (err) {
-      console.warn(`Yahoo Finance failed for ${validation.ticker}, using mock data`);
+      logger.warn('Yahoo Finance failed, using mock data', { ticker: validation.ticker });
       quote = getMockQuote(validation.ticker);
     }
 
@@ -102,7 +103,7 @@ router.get('/', async (req, res, next) => {
         }
       }
     } catch (err) {
-      console.warn('Yahoo Finance bulk failed, using mock data');
+      logger.warn('Yahoo Finance bulk failed, using mock data');
       quotes = tickerList.map(getMockQuote);
     }
 
