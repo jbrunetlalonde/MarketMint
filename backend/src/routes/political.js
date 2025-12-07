@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { ApiError } from '../middleware/errorHandler.js';
+import { authenticate, optionalAuth, requireAdmin } from '../middleware/auth.js';
 import politicalTracker from '../services/politicalTracker.js';
 import { validatePagination, validateTicker, sanitizeString } from '../utils/validation.js';
 
@@ -331,18 +332,15 @@ router.get('/officials', async (req, res, next) => {
 router.get('/officials/:name', async (req, res, next) => {
   try {
     const { name } = req.params;
+    const { limit } = req.query;
     const decodedName = decodeURIComponent(name);
+    const { limit: safeLimit } = validatePagination(0, limit, { defaultLimit: 100, maxLimit: 500 });
 
-    const official = await politicalTracker.getOfficialByName(decodedName);
-
-    // Get all trades for this official (increase limit for full history)
-    const allTrades = await politicalTracker.getRecentTrades({
-      limit: 500
-    });
-
-    const officialTrades = allTrades.filter(t =>
-      t.officialName.toLowerCase() === decodedName.toLowerCase()
-    );
+    // Use direct database query instead of fetching all trades and filtering in memory
+    const [official, officialTrades] = await Promise.all([
+      politicalTracker.getOfficialByName(decodedName),
+      politicalTracker.getTradesByOfficial(decodedName, { limit: safeLimit })
+    ]);
 
     // If no official found but we have trades, construct from trade data
     if (!official && officialTrades.length > 0) {
@@ -384,12 +382,8 @@ router.get('/officials/:name', async (req, res, next) => {
  * GET /api/political/watchlist-trades
  * Get trades for stocks in user's watchlist (requires auth)
  */
-router.get('/watchlist-trades', async (req, res, next) => {
+router.get('/watchlist-trades', authenticate, async (req, res, next) => {
   try {
-    if (!req.user) {
-      throw new ApiError(401, 'Authentication required');
-    }
-
     const trades = await politicalTracker.getWatchlistTrades(req.user.id);
 
     res.json({
@@ -405,12 +399,8 @@ router.get('/watchlist-trades', async (req, res, next) => {
  * POST /api/political/refresh
  * Refresh political trades for common tickers (admin only)
  */
-router.post('/refresh', async (req, res, next) => {
+router.post('/refresh', authenticate, requireAdmin, async (req, res, next) => {
   try {
-    if (!req.user || req.user.role !== 'admin') {
-      throw new ApiError(403, 'Admin access required');
-    }
-
     const results = await politicalTracker.refreshCommonTickers();
 
     res.json({

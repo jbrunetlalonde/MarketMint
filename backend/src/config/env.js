@@ -2,6 +2,23 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Validate required environment variables
+function requireEnv(name, minLength = 0) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} environment variable is required`);
+  }
+  if (minLength > 0 && value.length < minLength) {
+    throw new Error(`${name} must be at least ${minLength} characters`);
+  }
+  return value;
+}
+
+// JWT secret is required in production, optional in development
+const jwtSecret = process.env.NODE_ENV === 'production'
+  ? requireEnv('JWT_SECRET', 32)
+  : process.env.JWT_SECRET || 'dev-secret-change-in-production-min-32-chars';
+
 export const config = {
   // Server
   port: parseInt(process.env.PORT || '5000', 10),
@@ -11,7 +28,7 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL || 'postgres://marketmint:marketmint_dev@localhost:5432/marketmint',
 
   // JWT
-  jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+  jwtSecret,
   jwtExpiresIn: '24h',
   jwtRefreshExpiresIn: '7d',
 

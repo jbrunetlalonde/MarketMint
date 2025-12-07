@@ -57,12 +57,32 @@ app.use(helmet({
   contentSecurityPolicy: config.nodeEnv === 'production' ? undefined : false
 }));
 
-// CORS
+// CORS - explicit origin whitelist for security
+const allowedOrigins = [
+  'http://localhost:5173',  // Vite dev server
+  'http://localhost:3000',  // Production/preview
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: config.nodeEnv === 'production'
-    ? ['http://localhost:3000']
-    : true,
-  credentials: true
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else if (config.nodeEnv === 'development') {
+      // In development, log but allow unknown origins
+      console.warn(`CORS: Allowing unknown origin in dev mode: ${origin}`);
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS not allowed for origin: ${origin}`));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Rate limiting

@@ -1,6 +1,9 @@
 import { config } from '../config/env.js';
-import { query } from '../config/database.js';
+import { query, getClient } from '../config/database.js';
 import { LRUCache } from 'lru-cache';
+
+// PostgreSQL parameter limit
+const POSTGRES_PARAM_LIMIT = 65535;
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 
@@ -126,39 +129,71 @@ async function saveTradeToDB(trade) {
   );
 }
 
-// Save multiple trades in batch using multi-row insert
-async function saveBulkTrades(trades) {
-  if (!trades || trades.length === 0) return;
-
-  const values = [];
-  const params = [];
-  let paramIndex = 1;
-
-  for (const trade of trades) {
-    values.push(
-      `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, NOW())`
-    );
-    params.push(
-      trade.officialName,
-      trade.ticker,
-      trade.assetDescription,
-      trade.transactionType,
-      trade.transactionDate,
-      trade.reportedDate,
-      trade.amountMin,
-      trade.amountMax,
-      trade.amountDisplay
-    );
+// Helper to chunk arrays for batch processing
+function chunkArray(array, size) {
+  const chunks = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
   }
+  return chunks;
+}
 
-  await query(
-    `INSERT INTO political_trades
-       (official_name, ticker, asset_description, transaction_type, transaction_date,
-        reported_date, amount_min, amount_max, amount_display, retrieved_at)
-     VALUES ${values.join(', ')}
-     ON CONFLICT DO NOTHING`,
-    params
-  );
+// Save multiple trades in batch using multi-row insert with transaction
+async function saveBulkTrades(trades) {
+  if (!trades || trades.length === 0) return { inserted: 0 };
+
+  const COLUMNS_PER_ROW = 9;
+  const MAX_ROWS_PER_BATCH = Math.floor(POSTGRES_PARAM_LIMIT / COLUMNS_PER_ROW);
+  const batches = chunkArray(trades, MAX_ROWS_PER_BATCH);
+
+  const client = await getClient();
+  let totalInserted = 0;
+
+  try {
+    await client.query('BEGIN');
+
+    for (const batch of batches) {
+      const values = [];
+      const params = [];
+      let paramIndex = 1;
+
+      for (const trade of batch) {
+        values.push(
+          `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, NOW())`
+        );
+        params.push(
+          trade.officialName,
+          trade.ticker,
+          trade.assetDescription,
+          trade.transactionType,
+          trade.transactionDate,
+          trade.reportedDate,
+          trade.amountMin,
+          trade.amountMax,
+          trade.amountDisplay
+        );
+      }
+
+      const result = await client.query(
+        `INSERT INTO political_trades
+           (official_name, ticker, asset_description, transaction_type, transaction_date,
+            reported_date, amount_min, amount_max, amount_display, retrieved_at)
+         VALUES ${values.join(', ')}
+         ON CONFLICT (official_name, ticker, COALESCE(transaction_date, '1900-01-01'), transaction_type, COALESCE(amount_min, -1), COALESCE(amount_max, -1)) DO NOTHING`,
+        params
+      );
+      totalInserted += result.rowCount || 0;
+    }
+
+    await client.query('COMMIT');
+    return { inserted: totalInserted };
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 // Upsert official in database
@@ -177,37 +212,60 @@ async function upsertOfficial(official) {
   return result.rows[0]?.id;
 }
 
-// Bulk upsert officials
+// Bulk upsert officials with transaction
 async function upsertBulkOfficials(officials) {
-  if (!officials || officials.length === 0) return;
+  if (!officials || officials.length === 0) return { upserted: 0 };
 
-  const values = [];
-  const params = [];
-  let paramIndex = 1;
+  const COLUMNS_PER_ROW = 5;
+  const MAX_ROWS_PER_BATCH = Math.floor(POSTGRES_PARAM_LIMIT / COLUMNS_PER_ROW);
+  const batches = chunkArray(officials, MAX_ROWS_PER_BATCH);
 
-  for (const official of officials) {
-    values.push(
-      `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`
-    );
-    params.push(
-      official.name,
-      official.title,
-      official.party,
-      official.state,
-      official.district
-    );
+  const client = await getClient();
+  let totalUpserted = 0;
+
+  try {
+    await client.query('BEGIN');
+
+    for (const batch of batches) {
+      const values = [];
+      const params = [];
+      let paramIndex = 1;
+
+      for (const official of batch) {
+        values.push(
+          `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`
+        );
+        params.push(
+          official.name,
+          official.title,
+          official.party,
+          official.state,
+          official.district
+        );
+      }
+
+      const result = await client.query(
+        `INSERT INTO political_officials (name, title, party, state, district)
+         VALUES ${values.join(', ')}
+         ON CONFLICT (name) DO UPDATE SET
+           title = COALESCE(EXCLUDED.title, political_officials.title),
+           party = COALESCE(EXCLUDED.party, political_officials.party),
+           state = COALESCE(EXCLUDED.state, political_officials.state),
+           district = COALESCE(EXCLUDED.district, political_officials.district)`,
+        params
+      );
+      totalUpserted += result.rowCount || 0;
+    }
+
+    await client.query('COMMIT');
+    return { upserted: totalUpserted };
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-
-  await query(
-    `INSERT INTO political_officials (name, title, party, state, district)
-     VALUES ${values.join(', ')}
-     ON CONFLICT (name) DO UPDATE SET
-       title = COALESCE(EXCLUDED.title, political_officials.title),
-       party = COALESCE(EXCLUDED.party, political_officials.party),
-       state = COALESCE(EXCLUDED.state, political_officials.state),
-       district = COALESCE(EXCLUDED.district, political_officials.district)`,
-    params
-  );
 }
 
 // Get trades from database
@@ -436,6 +494,42 @@ export async function getOfficialByName(name) {
   };
 }
 
+// Get trades by official name (direct database query instead of in-memory filter)
+export async function getTradesByOfficial(officialName, options = {}) {
+  const { limit = 100, offset = 0 } = options;
+
+  const result = await query(
+    `SELECT
+       pt.id, pt.official_name, pt.ticker, pt.asset_description, pt.transaction_type,
+       pt.transaction_date, pt.reported_date, pt.amount_min, pt.amount_max, pt.amount_display,
+       po.party, po.title, po.state, po.ai_portrait_url
+     FROM political_trades pt
+     LEFT JOIN political_officials po ON pt.official_name = po.name
+     WHERE LOWER(pt.official_name) = LOWER($1)
+     ORDER BY pt.reported_date DESC NULLS LAST, pt.transaction_date DESC NULLS LAST
+     LIMIT $2 OFFSET $3`,
+    [officialName, limit, offset]
+  );
+
+  return result.rows.map(row => ({
+    id: row.id,
+    officialName: row.official_name,
+    ticker: row.ticker,
+    assetDescription: row.asset_description,
+    transactionType: row.transaction_type,
+    transactionDate: row.transaction_date,
+    reportedDate: row.reported_date,
+    amountMin: row.amount_min,
+    amountMax: row.amount_max,
+    amountDisplay: row.amount_display,
+    party: row.party,
+    title: row.title,
+    state: row.state,
+    portraitUrl: row.ai_portrait_url,
+    chamber: parseChamber(row.title)
+  }));
+}
+
 // Update official's portrait URL
 export async function updateOfficialPortrait(name, portraitUrl) {
   await query(
@@ -625,6 +719,7 @@ export default {
   getRecentTrades,
   getOfficials,
   getOfficialByName,
+  getTradesByOfficial,
   updateOfficialPortrait,
   getWatchlistTrades,
   refreshCommonTickers,
