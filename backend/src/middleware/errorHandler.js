@@ -1,4 +1,5 @@
 import { config } from '../config/env.js';
+import logger from '../config/logger.js';
 
 /**
  * Custom API error class
@@ -48,17 +49,21 @@ export function errorHandler(err, req, res, next) {
     message = 'Invalid JSON body';
   }
 
-  // Log error in development
-  if (config.nodeEnv === 'development') {
-    console.error('Error:', {
-      statusCode,
-      message,
-      stack: err.stack,
-      details
-    });
-  } else if (statusCode >= 500) {
-    // Log server errors in production
-    console.error('Server Error:', err.message);
+  // Log error
+  const logData = {
+    statusCode,
+    message,
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    ...(details && { details }),
+    ...(err.stack && { stack: err.stack })
+  };
+
+  if (statusCode >= 500) {
+    logger.error('Server error', logData);
+  } else if (statusCode >= 400) {
+    logger.warn('Client error', logData);
   }
 
   // Send response

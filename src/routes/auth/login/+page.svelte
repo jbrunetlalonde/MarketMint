@@ -15,7 +15,7 @@
 		const result = await auth.login(email, password);
 
 		if (result.success) {
-			goto('/');
+			goto('/markets');
 		} else {
 			error = result.error || 'Login failed';
 		}

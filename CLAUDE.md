@@ -55,6 +55,88 @@ backend/
 
 ---
 
+## Markdown Documentation Standards
+
+When writing `.md` plan files, technical documents, or any markdown documentation, follow these formatting rules to ensure clean, professional output in Typora and other markdown readers.
+
+### Document Structure
+- Start every document with a centered title using HTML: `<h1 align="center">Title</h1>`
+- Add a centered subtitle or description below the title when appropriate
+- Use horizontal rules (`---`) to separate major sections
+- Maintain consistent heading hierarchy (H2 for sections, H3 for subsections)
+- Include a brief overview or summary section after the title
+
+### Layout and Spacing
+- Use blank lines before and after headings, code blocks, and lists
+- Keep paragraphs concise (3-5 sentences maximum)
+- Use blockquotes (`>`) for important callouts or notes
+- Prefer tables over long lists when comparing options or showing structured data
+
+### Visual Hierarchy
+- Use **bold** sparingly for emphasis on key terms
+- Use `inline code` for file names, commands, and technical identifiers
+- Use bullet lists for unordered items, numbered lists for sequential steps
+- Indent nested content consistently (2 spaces for sub-items)
+
+### Plan Document Template
+```markdown
+<h1 align="center">Feature/Task Name</h1>
+
+<p align="center">Brief one-line description of the plan</p>
+
+---
+
+## Overview
+
+Summary of what this plan accomplishes and why.
+
+---
+
+## Implementation Steps
+
+### Phase 1: Description
+- Step details
+- Step details
+
+### Phase 2: Description
+- Step details
+
+---
+
+## Technical Considerations
+
+Key decisions, trade-offs, or notes.
+
+---
+
+## Files Affected
+
+| File | Change Type | Description |
+|------|-------------|-------------|
+| `path/to/file.ts` | Modify | What changes |
+
+---
+
+## Checklist
+
+- [ ] Task 1
+- [ ] Task 2
+```
+
+### Typora Compatibility
+- Avoid raw HTML except for centering (`align="center"`)
+- Use fenced code blocks with language specifiers (```typescript)
+- Keep table columns balanced in width
+- Test that collapsible sections render correctly if used
+
+### Plan File Storage
+- Save all implementation plans to `/docs/` directory
+- Use descriptive filenames: `{feature-name}-plan.md` (e.g., `congress-trades-plan.md`)
+- Reference plan files from this location when resuming work
+- Keep plans updated as implementation progresses
+
+---
+
 ## Svelte 5 Best Practices
 
 ### Use Svelte MCP Tools

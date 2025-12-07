@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import { query } from '../config/database.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import { generateTokens, authenticate } from '../middleware/auth.js';
@@ -10,11 +11,36 @@ const router = Router();
 
 const BCRYPT_ROUNDS = 12;
 
+// Strict rate limiting for auth endpoints to prevent brute force attacks
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per window per IP
+  message: {
+    success: false,
+    error: { message: 'Too many login attempts, please try again after 15 minutes' }
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true // Don't count successful logins
+});
+
+// Looser limit for registration (prevent spam account creation)
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 registrations per hour per IP
+  message: {
+    success: false,
+    error: { message: 'Too many accounts created, please try again later' }
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 /**
  * POST /api/auth/register
  * Create new user account
  */
-router.post('/register', async (req, res, next) => {
+router.post('/register', registerLimiter, async (req, res, next) => {
   try {
     const { username, email, password } = req.body;
 
@@ -87,7 +113,7 @@ router.post('/register', async (req, res, next) => {
  * POST /api/auth/login
  * Authenticate user and return tokens
  */
-router.post('/login', async (req, res, next) => {
+router.post('/login', authLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
 

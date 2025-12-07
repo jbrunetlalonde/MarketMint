@@ -1,154 +1,125 @@
-import { env } from '$env/dynamic/public';
+// Re-export from modular API structure for backward compatibility
+import { authApi } from './api/auth';
+import { quotesApi } from './api/quotes';
+import { watchlistApi } from './api/watchlist';
+import { financialsApi } from './api/financials';
+import { newsApi } from './api/news';
+import { politicalApi } from './api/political';
+import { insiderApi } from './api/insider';
+import { economicApi } from './api/economic';
+import { chartsApi } from './api/charts';
+import { alertsApi } from './api/alerts';
+import { ideasApi } from './api/ideas';
+import { portfolioApi } from './api/portfolio';
+import { newsletterApi } from './api/newsletter';
+import { searchApi } from './api/search';
 
-const API_BASE = env.PUBLIC_API_URL || 'http://localhost:5001';
+// Re-export types
+export type { ApiOptions, ApiResponse } from './api/request';
 
-interface ApiOptions extends RequestInit {
-	token?: string;
-}
-
-interface ApiResponse<T> {
-	success: boolean;
-	data?: T;
-	error?: {
-		message: string;
-		details?: unknown;
-	};
-}
-
-/**
- * Make an API request
- */
-async function request<T>(
-	endpoint: string,
-	options: ApiOptions = {}
-): Promise<ApiResponse<T>> {
-	const { token, ...fetchOptions } = options;
-
-	const headers: Record<string, string> = {
-		'Content-Type': 'application/json'
-	};
-
-	if (token) {
-		headers['Authorization'] = `Bearer ${token}`;
-	}
-
-	try {
-		const response = await fetch(`${API_BASE}${endpoint}`, {
-			...fetchOptions,
-			headers
-		});
-
-		const data = await response.json();
-
-		if (!response.ok) {
-			return {
-				success: false,
-				error: data.error || { message: 'Request failed' }
-			};
-		}
-
-		return data;
-	} catch (err) {
-		return {
-			success: false,
-			error: {
-				message: err instanceof Error ? err.message : 'Network error'
-			}
-		};
-	}
-}
-
-/**
- * API client methods
- */
+// Compose unified API object for backward compatibility
 export const api = {
 	// Auth
-	login: (email: string, password: string) =>
-		request<{
-			user: { id: string; username: string; email: string; role: string };
-			accessToken: string;
-			refreshToken: string;
-		}>('/api/auth/login', {
-			method: 'POST',
-			body: JSON.stringify({ email, password })
-		}),
-
-	register: (username: string, email: string, password: string) =>
-		request<{
-			user: { id: string; username: string; email: string; role: string };
-			accessToken: string;
-			refreshToken: string;
-		}>('/api/auth/register', {
-			method: 'POST',
-			body: JSON.stringify({ username, email, password })
-		}),
-
-	refresh: (refreshToken: string) =>
-		request<{ accessToken: string; refreshToken: string }>('/api/auth/refresh', {
-			method: 'POST',
-			body: JSON.stringify({ refreshToken })
-		}),
-
-	logout: (token: string, refreshToken: string) =>
-		request('/api/auth/logout', {
-			method: 'POST',
-			token,
-			body: JSON.stringify({ refreshToken })
-		}),
-
-	getMe: (token: string) =>
-		request<{ user: { id: string; username: string; email: string; role: string } }>(
-			'/api/auth/me',
-			{ token }
-		),
+	login: authApi.login,
+	register: authApi.register,
+	refresh: authApi.refresh,
+	logout: authApi.logout,
+	getMe: authApi.getMe,
 
 	// Quotes
-	getQuote: (ticker: string, token?: string) =>
-		request<{ ticker: string; price: number; change: number; changePercent: number }>(
-			`/api/quotes/${ticker}`,
-			{ token }
-		),
-
-	getBulkQuotes: (tickers: string[], token?: string) =>
-		request<
-			Array<{ ticker: string; price: number; change: number; changePercent: number }>
-		>(`/api/quotes/bulk?tickers=${tickers.join(',')}`, { token }),
+	getQuote: quotesApi.getQuote,
+	getBulkQuotes: quotesApi.getBulkQuotes,
+	getHistory: quotesApi.getHistory,
 
 	// Watchlist
-	getWatchlist: (token: string) =>
-		request<Array<{ id: string; ticker: string; notes: string; added_at: string }>>(
-			'/api/watchlist',
-			{ token }
-		),
-
-	addToWatchlist: (token: string, ticker: string, notes?: string) =>
-		request('/api/watchlist/add', {
-			method: 'POST',
-			token,
-			body: JSON.stringify({ ticker, notes })
-		}),
-
-	removeFromWatchlist: (token: string, ticker: string) =>
-		request(`/api/watchlist/${ticker}`, {
-			method: 'DELETE',
-			token
-		}),
+	getWatchlist: watchlistApi.getWatchlist,
+	addToWatchlist: watchlistApi.addToWatchlist,
+	removeFromWatchlist: watchlistApi.removeFromWatchlist,
+	updateWatchlistNotes: watchlistApi.updateWatchlistNotes,
 
 	// Financials
-	getFinancials: (ticker: string, token?: string) =>
-		request(`/api/financials/${ticker}`, { token }),
+	getFinancials: financialsApi.getFinancials,
+	getProfile: financialsApi.getProfile,
+	getIncomeStatement: financialsApi.getIncomeStatement,
+	getBalanceSheet: financialsApi.getBalanceSheet,
+	getCashFlow: financialsApi.getCashFlow,
+	getRevenueSegments: financialsApi.getRevenueSegments,
+	getInstitutionalHolders: financialsApi.getInstitutionalHolders,
+	getHistoricalPrices: financialsApi.getHistoricalPrices,
+	getExecutives: financialsApi.getExecutives,
+	getRating: financialsApi.getRating,
+	getDCF: financialsApi.getDCF,
+	getPriceTarget: financialsApi.getPriceTarget,
+	getPeers: financialsApi.getPeers,
+	getDividends: financialsApi.getDividends,
+	getSplits: financialsApi.getSplits,
+	getFullFinancials: financialsApi.getFullFinancials,
+	getEarningsCalendar: financialsApi.getEarningsCalendar,
 
 	// News
-	getNews: (category?: string, token?: string) =>
-		request(`/api/news${category ? `?category=${category}` : ''}`, { token }),
+	getNews: newsApi.getNews,
+	getNewsTrending: newsApi.getNewsTrending,
+	getTickerNews: newsApi.getTickerNews,
+	getNewsSummary: newsApi.getNewsSummary,
 
-	// Political trades
-	getPoliticalTrades: (token?: string) => request('/api/political/trades', { token }),
+	// Political
+	getPoliticalTrades: politicalApi.getPoliticalTrades,
+	getPoliticalTradesByTicker: politicalApi.getPoliticalTradesByTicker,
+	getPoliticalOfficials: politicalApi.getPoliticalOfficials,
+	getPoliticalOfficial: politicalApi.getPoliticalOfficial,
+	getSenateStats: politicalApi.getSenateStats,
+	getHouseStats: politicalApi.getHouseStats,
+	getOfficialStats: politicalApi.getOfficialStats,
+
+	// Insider
+	getInsiderTrades: insiderApi.getInsiderTrades,
+	getInsiderTradesByTicker: insiderApi.getInsiderTradesByTicker,
+	getInsiderStats: insiderApi.getInsiderStats,
+
+	// Economic
+	getEconomicIndicators: economicApi.getEconomicIndicators,
+	getEconomicDashboard: economicApi.getEconomicDashboard,
+	getEconomicSeries: economicApi.getEconomicSeries,
+	getAvailableEconomicSeries: economicApi.getAvailableEconomicSeries,
+
+	// Charts
+	getOHLC: chartsApi.getOHLC,
+	getIndicators: chartsApi.getIndicators,
+	getDataFreshness: chartsApi.getDataFreshness,
+
+	// Alerts
+	getAlerts: alertsApi.getAlerts,
+	getUnreadAlertCount: alertsApi.getUnreadAlertCount,
+	markAlertRead: alertsApi.markAlertRead,
+	markAllAlertsRead: alertsApi.markAllAlertsRead,
+	getIdeaAlerts: alertsApi.getIdeaAlerts,
+	getUnreadIdeaAlertCount: alertsApi.getUnreadIdeaAlertCount,
+	markIdeaAlertRead: alertsApi.markIdeaAlertRead,
+
+	// Ideas
+	getTradingIdeas: ideasApi.getTradingIdeas,
+	getTradingIdea: ideasApi.getTradingIdea,
+	createTradingIdea: ideasApi.createTradingIdea,
+	updateTradingIdea: ideasApi.updateTradingIdea,
+	closeTradingIdea: ideasApi.closeTradingIdea,
+	deleteTradingIdea: ideasApi.deleteTradingIdea,
+	getTradingIdeasStats: ideasApi.getTradingIdeasStats,
+	exportTradingIdeas: ideasApi.exportTradingIdeas,
+	exportTradingIdeasPDF: ideasApi.exportTradingIdeasPDF,
+
+	// Portfolio
+	getPortfolio: portfolioApi.getPortfolio,
+	getPortfolioSummary: portfolioApi.getPortfolioSummary,
+	addPortfolioHolding: portfolioApi.addPortfolioHolding,
+	updatePortfolioHolding: portfolioApi.updatePortfolioHolding,
+	deletePortfolioHolding: portfolioApi.deletePortfolioHolding,
 
 	// Newsletter
-	getLatestNewsletter: (token?: string) => request('/api/newsletter/latest', { token }),
+	subscribeNewsletter: newsletterApi.subscribeNewsletter,
+	unsubscribeNewsletter: newsletterApi.unsubscribeNewsletter,
 
-	getNewsletterArchive: (token?: string) => request('/api/newsletter/archive', { token })
+	// Search
+	searchSymbols: searchApi.searchSymbols
 };
 
 export default api;

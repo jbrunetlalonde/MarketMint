@@ -28,7 +28,7 @@
 		const result = await auth.register(username, email, password);
 
 		if (result.success) {
-			goto('/');
+			goto('/markets');
 		} else {
 			error = result.error || 'Registration failed';
 		}
