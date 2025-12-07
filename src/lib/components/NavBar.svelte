@@ -42,7 +42,6 @@
 </script>
 
 <nav class="nav-bar">
-	<div class="nav-spacer"></div>
 	<div class="nav-links">
 		{#each links as link (link.href)}
 			<a href={link.href} class="nav-link" class:active={isActive(link.href)}>
@@ -53,26 +52,22 @@
 			</a>
 		{/each}
 	</div>
-	<div class="nav-search" bind:this={searchContainer}>
-		<SearchAutocomplete placeholder="Search..." compact />
-		<kbd class="search-hint">
-			<span class="search-hint-key">{typeof navigator !== 'undefined' && navigator.platform?.includes('Mac') ? 'Cmd' : 'Ctrl'}</span>
-			<span class="search-hint-key">K</span>
-		</kbd>
-	</div>
-	<div class="nav-auth">
-		{#if isAuthenticated && username}
-			<span class="nav-user">
-				<svg class="user-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<circle cx="12" cy="8" r="4"></circle>
-					<path d="M4 20c0-4 4-6 8-6s8 2 8 6"></path>
-				</svg>
-				{username}
-			</span>
-			<button onclick={onLogout} class="nav-link logout-btn">Logout</button>
-		{:else}
-			<a href="/auth/login" class="nav-link">Login</a>
-		{/if}
+	<div class="nav-right" bind:this={searchContainer}>
+		<SearchAutocomplete placeholder="Search..." compact expandable />
+		<div class="nav-auth">
+			{#if isAuthenticated && username}
+				<span class="nav-user">
+					<svg class="user-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<circle cx="12" cy="8" r="4"></circle>
+						<path d="M4 20c0-4 4-6 8-6s8 2 8 6"></path>
+					</svg>
+					{username}
+				</span>
+				<button onclick={onLogout} class="nav-link logout-btn">Logout</button>
+			{:else}
+				<a href="/auth/login" class="nav-link">Login</a>
+			{/if}
+		</div>
 	</div>
 </nav>
 
@@ -92,37 +87,4 @@
 		margin-left: 0.25rem;
 	}
 
-	.nav-search {
-		position: relative;
-		display: flex;
-		align-items: center;
-		gap: 0.375rem;
-		min-width: 140px;
-		max-width: 200px;
-		margin-left: 2rem;
-	}
-
-	.search-hint {
-		display: flex;
-		align-items: center;
-		gap: 1px;
-		font-family: var(--font-mono);
-		font-size: 0.55rem;
-		color: var(--color-ink-muted);
-		pointer-events: none;
-		white-space: nowrap;
-	}
-
-	.search-hint-key {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 1rem;
-		height: 1rem;
-		padding: 0 0.2rem;
-		background: var(--color-newsprint-dark);
-		border: 1px solid var(--color-border);
-		border-radius: 2px;
-		font-weight: 500;
-	}
 </style>

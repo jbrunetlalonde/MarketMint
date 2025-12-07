@@ -3,6 +3,8 @@
 	import api from '$lib/utils/api';
 	import PoliticalTradeCard from '$lib/components/PoliticalTradeCard.svelte';
 	import { getCongressPortraitUrl } from '$lib/utils/urls';
+	import { getPartyAbbrev } from '$lib/utils/political';
+	import type { PageData } from './$types';
 
 	interface PoliticalTrade {
 		id: number;
@@ -21,6 +23,9 @@
 		isMock?: boolean;
 	}
 
+	let { data }: { data: PageData } = $props();
+	const { config } = data;
+
 	let trades = $state<PoliticalTrade[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -30,11 +35,14 @@
 	let filterTicker = $state('');
 	let viewMode = $state<'table' | 'cards'>('cards');
 
+	function matchesChamber(title: string | null | undefined): boolean {
+		if (!title) return false;
+		const lower = title.toLowerCase();
+		return config.titleFilter.some((filter) => lower.includes(filter));
+	}
+
 	const filteredTrades = $derived.by(() => {
-		let result = trades.filter((t) => {
-			const title = t.title?.toLowerCase() || '';
-			return title.includes('representative') || title.includes('rep.');
-		});
+		let result = trades.filter((t) => matchesChamber(t.title));
 
 		if (filterParty !== 'all') {
 			result = result.filter((t) => {
@@ -57,19 +65,15 @@
 		return result;
 	});
 
-	// Stats for House
 	const stats = $derived.by(() => {
-		const houseTrades = trades.filter((t) => {
-			const title = t.title?.toLowerCase() || '';
-			return title.includes('representative') || title.includes('rep.');
-		});
-		if (houseTrades.length === 0) return null;
+		const chamberTrades = trades.filter((t) => matchesChamber(t.title));
+		if (chamberTrades.length === 0) return null;
 
-		const buyCount = houseTrades.filter((t) => t.transactionType === 'BUY').length;
-		const sellCount = houseTrades.filter((t) => t.transactionType === 'SELL').length;
+		const buyCount = chamberTrades.filter((t) => t.transactionType === 'BUY').length;
+		const sellCount = chamberTrades.filter((t) => t.transactionType === 'SELL').length;
 
 		const topTraders: Record<string, number> = {};
-		houseTrades.forEach((t) => {
+		chamberTrades.forEach((t) => {
 			topTraders[t.officialName] = (topTraders[t.officialName] || 0) + 1;
 		});
 
@@ -78,7 +82,7 @@
 			.slice(0, 5);
 
 		const topStocks: Record<string, number> = {};
-		houseTrades.forEach((t) => {
+		chamberTrades.forEach((t) => {
 			topStocks[t.ticker] = (topStocks[t.ticker] || 0) + 1;
 		});
 
@@ -87,7 +91,7 @@
 			.slice(0, 5);
 
 		return {
-			totalTrades: houseTrades.length,
+			totalTrades: chamberTrades.length,
 			buyCount,
 			sellCount,
 			topTraders: sortedTraders,
@@ -100,11 +104,11 @@
 		error = null;
 
 		try {
-			const response = await api.getPoliticalTrades({ chamber: 'house', limit: 200 });
+			const response = await api.getPoliticalTrades({ chamber: config.chamber, limit: 200 });
 			if (response.success && response.data) {
 				trades = response.data;
 			} else {
-				error = 'Failed to load House trades';
+				error = `Failed to load ${config.title} trades`;
 			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load trades';
@@ -113,16 +117,8 @@
 		}
 	}
 
-	function getPartyAbbrev(party?: string | null): string {
-		if (!party) return '?';
-		const p = party.toLowerCase();
-		if (p.includes('democrat')) return 'D';
-		if (p.includes('republican')) return 'R';
-		return party.charAt(0).toUpperCase();
-	}
-
 	function getPortraitUrl(name: string): string {
-		return getCongressPortraitUrl(name, 'house');
+		return getCongressPortraitUrl(name, config.chamber);
 	}
 
 	$effect(() => {
@@ -131,22 +127,19 @@
 </script>
 
 <svelte:head>
-	<title>House Trades - MarketMint</title>
+	<title>{config.chamber === 'house' ? 'House' : 'Senate'} Trades - MarketMint</title>
 </svelte:head>
 
 <div class="newspaper-grid">
 	<section class="col-span-full">
-		<h1 class="headline headline-xl">House Trading Activity</h1>
-		<p class="text-ink-muted mt-2">
-			Track stock trades made by U.S. Representatives. Data sourced from public STOCK Act filings.
-		</p>
+		<h1 class="headline headline-xl">{config.pageTitle}</h1>
+		<p class="text-ink-muted mt-2">{config.description}</p>
 	</section>
 
-	<!-- Stats Cards -->
 	{#if stats}
 		<section class="col-span-4">
 			<div class="card">
-				<h2 class="headline headline-md mb-4">House Stats</h2>
+				<h2 class="headline headline-md mb-4">{config.chamber === 'house' ? 'House' : 'Senate'} Stats</h2>
 				<div class="stats-grid">
 					<div class="stat-box">
 						<p class="text-2xl font-bold">{stats.totalTrades}</p>
@@ -163,7 +156,7 @@
 				</div>
 
 				{#if stats.topTraders.length > 0}
-					<h3 class="byline mt-4 mb-2">Most Active Representatives</h3>
+					<h3 class="byline mt-4 mb-2">Most Active {config.titlePlural}</h3>
 					<div class="space-y-1">
 						{#each stats.topTraders as [name, count] (name)}
 							<a
@@ -195,7 +188,6 @@
 		</section>
 	{/if}
 
-	<!-- Filters and Trades -->
 	<section class={stats ? 'col-span-8' : 'col-span-full'}>
 		<div class="card mb-4">
 			<div class="flex gap-4 flex-wrap items-end">
@@ -250,7 +242,7 @@
 
 		{#if loading && trades.length === 0}
 			<div class="card text-center py-8">
-				<p class="text-ink-muted">Loading House trades...</p>
+				<p class="text-ink-muted">Loading {config.chamber === 'house' ? 'House' : 'Senate'} trades...</p>
 			</div>
 		{:else if error}
 			<div class="card text-center py-8">
@@ -259,7 +251,7 @@
 			</div>
 		{:else if filteredTrades.length === 0}
 			<div class="card text-center py-8">
-				<p class="text-ink-muted">No House trades found matching your filters.</p>
+				<p class="text-ink-muted">No {config.chamber === 'house' ? 'House' : 'Senate'} trades found matching your filters.</p>
 			</div>
 		{:else if viewMode === 'cards'}
 			<div class="grid gap-4 md:grid-cols-2">
@@ -272,7 +264,7 @@
 				<table class="data-table">
 					<thead>
 						<tr>
-							<th>Representative</th>
+							<th>{config.title}</th>
 							<th>Ticker</th>
 							<th>Type</th>
 							<th>Amount</th>
@@ -289,6 +281,8 @@
 											src={getPortraitUrl(trade.officialName)}
 											alt={trade.officialName}
 											class="w-10 h-12 object-contain border border-ink-light bg-newsprint flex-shrink-0"
+											loading="lazy"
+											decoding="async"
 											onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
 										/>
 										<div>

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ApiError } from '../middleware/errorHandler.js';
 import insiderTracker from '../services/insiderTracker.js';
+import { validatePagination, validateTicker, sanitizeString } from '../utils/validation.js';
 
 const router = Router();
 
@@ -11,16 +12,19 @@ const router = Router();
  */
 router.get('/trades', async (req, res, next) => {
   try {
-    const { ticker, transactionType, limit = 50, page = 0 } = req.query;
+    const { ticker, transactionType, limit, page } = req.query;
+    const { page: safePage, limit: safeLimit } = validatePagination(page, limit);
+    const safeTicker = ticker ? sanitizeString(ticker, 5)?.toUpperCase() : undefined;
+    const safeType = sanitizeString(transactionType);
 
     let trades = await insiderTracker.getInsiderTrades({
-      ticker,
-      page: parseInt(page),
-      limit: parseInt(limit)
+      ticker: safeTicker,
+      page: safePage,
+      limit: safeLimit
     });
 
-    if (transactionType) {
-      const type = transactionType.toUpperCase();
+    if (safeType) {
+      const type = safeType.toUpperCase();
       trades = trades.filter(t =>
         t.transactionType === type ||
         (type === 'BUY' && t.transactionType === 'PURCHASE') ||
@@ -44,17 +48,15 @@ router.get('/trades', async (req, res, next) => {
 router.get('/trades/:ticker', async (req, res, next) => {
   try {
     const { ticker } = req.params;
-    const { limit = 50 } = req.query;
+    const { limit } = req.query;
+    const safeTicker = validateTicker(ticker);
+    const { limit: safeLimit } = validatePagination(0, limit);
 
-    if (!ticker || !/^[A-Z]{1,5}$/.test(ticker.toUpperCase())) {
-      throw new ApiError(400, 'Invalid ticker symbol');
-    }
-
-    const trades = await insiderTracker.getInsiderTradesByTicker(ticker.toUpperCase());
+    const trades = await insiderTracker.getInsiderTradesByTicker(safeTicker);
 
     res.json({
       success: true,
-      data: trades.slice(0, parseInt(limit))
+      data: trades.slice(0, safeLimit)
     });
   } catch (err) {
     next(err);
@@ -67,9 +69,10 @@ router.get('/trades/:ticker', async (req, res, next) => {
  */
 router.get('/latest', async (req, res, next) => {
   try {
-    const { limit = 50 } = req.query;
+    const { limit } = req.query;
+    const { limit: safeLimit } = validatePagination(0, limit);
 
-    const trades = await insiderTracker.getLatestInsiderTrades(parseInt(limit));
+    const trades = await insiderTracker.getLatestInsiderTrades(safeLimit);
 
     res.json({
       success: true,

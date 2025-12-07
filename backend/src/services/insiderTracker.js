@@ -1,8 +1,24 @@
 import { config } from '../config/env.js';
+import { LRUCache } from 'lru-cache';
 
 const FMP_BASE_URL = 'https://financialmodelingprep.com/stable';
 
-const memoryCache = new Map();
+// LRU cache with size limits to prevent memory leaks
+const memoryCache = new LRUCache({
+  max: 500,                    // Max 500 entries
+  maxSize: 50 * 1024 * 1024,   // Max 50MB total
+  sizeCalculation: (value) => {
+    try {
+      return JSON.stringify(value).length;
+    } catch {
+      return 1000; // Default size if stringify fails
+    }
+  },
+  ttl: 1000 * 60 * 60,         // Default 1 hour TTL
+  updateAgeOnGet: true,        // Reset TTL on access
+  allowStale: false
+});
+
 const pendingRequests = new Map();
 
 function getCacheKey(type, param = '') {
@@ -10,19 +26,11 @@ function getCacheKey(type, param = '') {
 }
 
 function getFromMemoryCache(key) {
-  const cached = memoryCache.get(key);
-  if (cached && Date.now() < cached.expires) {
-    return cached.data;
-  }
-  memoryCache.delete(key);
-  return null;
+  return memoryCache.get(key) || null;
 }
 
 function setMemoryCache(key, data, ttlSeconds) {
-  memoryCache.set(key, {
-    data,
-    expires: Date.now() + ttlSeconds * 1000
-  });
+  memoryCache.set(key, data, { ttl: ttlSeconds * 1000 });
 }
 
 async function deduplicatedRequest(key, fetchFn) {
@@ -374,6 +382,8 @@ export function getInsiderStats(trades) {
 export function getCacheStats() {
   return {
     memoryCacheSize: memoryCache.size,
+    memoryCacheMaxSize: memoryCache.max,
+    calculatedSize: memoryCache.calculatedSize,
     pendingRequests: pendingRequests.size
   };
 }

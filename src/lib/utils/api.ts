@@ -1,1077 +1,125 @@
-import { env } from '$env/dynamic/public';
+// Re-export from modular API structure for backward compatibility
+import { authApi } from './api/auth';
+import { quotesApi } from './api/quotes';
+import { watchlistApi } from './api/watchlist';
+import { financialsApi } from './api/financials';
+import { newsApi } from './api/news';
+import { politicalApi } from './api/political';
+import { insiderApi } from './api/insider';
+import { economicApi } from './api/economic';
+import { chartsApi } from './api/charts';
+import { alertsApi } from './api/alerts';
+import { ideasApi } from './api/ideas';
+import { portfolioApi } from './api/portfolio';
+import { newsletterApi } from './api/newsletter';
+import { searchApi } from './api/search';
 
-const API_BASE = env.PUBLIC_API_URL || 'http://localhost:5001';
+// Re-export types
+export type { ApiOptions, ApiResponse } from './api/request';
 
-interface ApiOptions extends RequestInit {
-	token?: string;
-}
-
-interface ApiResponse<T> {
-	success: boolean;
-	data?: T;
-	error?: {
-		message: string;
-		details?: unknown;
-	};
-}
-
-/**
- * Make an API request
- */
-async function request<T>(
-	endpoint: string,
-	options: ApiOptions = {}
-): Promise<ApiResponse<T>> {
-	const { token, ...fetchOptions } = options;
-
-	const headers: Record<string, string> = {
-		'Content-Type': 'application/json'
-	};
-
-	if (token) {
-		headers['Authorization'] = `Bearer ${token}`;
-	}
-
-	try {
-		const response = await fetch(`${API_BASE}${endpoint}`, {
-			...fetchOptions,
-			headers
-		});
-
-		const data = await response.json();
-
-		if (!response.ok) {
-			return {
-				success: false,
-				error: data.error || { message: 'Request failed' }
-			};
-		}
-
-		return data;
-	} catch (err) {
-		return {
-			success: false,
-			error: {
-				message: err instanceof Error ? err.message : 'Network error'
-			}
-		};
-	}
-}
-
-/**
- * API client methods
- */
+// Compose unified API object for backward compatibility
 export const api = {
 	// Auth
-	login: (email: string, password: string) =>
-		request<{
-			user: { id: string; username: string; email: string; role: string };
-			accessToken: string;
-			refreshToken: string;
-		}>('/api/auth/login', {
-			method: 'POST',
-			body: JSON.stringify({ email, password })
-		}),
-
-	register: (username: string, email: string, password: string) =>
-		request<{
-			user: { id: string; username: string; email: string; role: string };
-			accessToken: string;
-			refreshToken: string;
-		}>('/api/auth/register', {
-			method: 'POST',
-			body: JSON.stringify({ username, email, password })
-		}),
-
-	refresh: (refreshToken: string) =>
-		request<{ accessToken: string; refreshToken: string }>('/api/auth/refresh', {
-			method: 'POST',
-			body: JSON.stringify({ refreshToken })
-		}),
-
-	logout: (token: string, refreshToken: string) =>
-		request('/api/auth/logout', {
-			method: 'POST',
-			token,
-			body: JSON.stringify({ refreshToken })
-		}),
-
-	getMe: (token: string) =>
-		request<{ user: { id: string; username: string; email: string; role: string } }>(
-			'/api/auth/me',
-			{ token }
-		),
+	login: authApi.login,
+	register: authApi.register,
+	refresh: authApi.refresh,
+	logout: authApi.logout,
+	getMe: authApi.getMe,
 
 	// Quotes
-	getQuote: (ticker: string, token?: string) =>
-		request<{ ticker: string; price: number; change: number; changePercent: number }>(
-			`/api/quotes/${ticker}`,
-			{ token }
-		),
-
-	getBulkQuotes: (tickers: string[], token?: string) =>
-		request<
-			Array<{ ticker: string; price: number; change: number; changePercent: number }>
-		>(`/api/quotes?tickers=${tickers.join(',')}`, { token }),
+	getQuote: quotesApi.getQuote,
+	getBulkQuotes: quotesApi.getBulkQuotes,
+	getHistory: quotesApi.getHistory,
 
 	// Watchlist
-	getWatchlist: (token: string) =>
-		request<Array<{ id: string; ticker: string; notes: string; added_at: string }>>(
-			'/api/watchlist',
-			{ token }
-		),
-
-	addToWatchlist: (token: string, ticker: string, notes?: string) =>
-		request('/api/watchlist/add', {
-			method: 'POST',
-			token,
-			body: JSON.stringify({ ticker, notes })
-		}),
-
-	removeFromWatchlist: (token: string, ticker: string) =>
-		request(`/api/watchlist/${ticker}`, {
-			method: 'DELETE',
-			token
-		}),
-
-	updateWatchlistNotes: (token: string, ticker: string, notes: string) =>
-		request<{ id: string; ticker: string; notes: string; added_at: string }>(
-			`/api/watchlist/${ticker}`,
-			{
-				method: 'PUT',
-				token,
-				body: JSON.stringify({ notes })
-			}
-		),
-
-	// History
-	getHistory: (ticker: string, period = '1y', token?: string) =>
-		request<{
-			ticker: string;
-			period: string;
-			history: Array<{ date: string; close: number; volume?: number }>;
-		}>(`/api/quotes/${ticker}/history?period=${period}`, { token }),
+	getWatchlist: watchlistApi.getWatchlist,
+	addToWatchlist: watchlistApi.addToWatchlist,
+	removeFromWatchlist: watchlistApi.removeFromWatchlist,
+	updateWatchlistNotes: watchlistApi.updateWatchlistNotes,
 
 	// Financials
-	getFinancials: (ticker: string, token?: string) =>
-		request<{
-			ticker: string;
-			companyName: string;
-			sector: string;
-			industry: string;
-			description?: string;
-			ceo?: string;
-			employees?: number;
-			website?: string;
-			logo?: string;
-			peRatio?: number;
-			pbRatio?: number;
-			debtToEquity?: number;
-			roe?: number;
-			dividendYield?: number;
-			isMock?: boolean;
-		}>(`/api/financials/${ticker}`, { token }),
-
-	getProfile: (ticker: string, token?: string) =>
-		request<{
-			ticker: string;
-			name: string;
-			exchange?: string;
-			industry?: string;
-			sector?: string;
-			website?: string;
-			description?: string;
-			ceo?: string;
-			employees?: number;
-			headquarters?: string;
-			image?: string;
-		}>(`/api/financials/${ticker}/profile`, { token }),
-
-	getIncomeStatement: (ticker: string, period = 'annual', limit = 5, token?: string) =>
-		request<
-			Array<{
-				date: string;
-				period: string;
-				revenue: number;
-				netIncome: number;
-				grossProfit: number;
-				operatingIncome: number;
-				eps: number;
-			}>
-		>(`/api/financials/${ticker}/income?period=${period}&limit=${limit}`, { token }),
-
-	getBalanceSheet: (ticker: string, period = 'annual', limit = 5, token?: string) =>
-		request<
-			Array<{
-				date: string;
-				period: string;
-				cashAndCashEquivalents: number;
-				totalAssets: number;
-				totalLiabilities: number;
-				totalEquity: number;
-				totalDebt: number;
-				netDebt: number;
-			}>
-		>(`/api/financials/${ticker}/balance?period=${period}&limit=${limit}`, { token }),
-
-	getCashFlow: (ticker: string, period = 'annual', limit = 5, token?: string) =>
-		request<
-			Array<{
-				date: string;
-				period: string;
-				netIncome: number;
-				operatingCashFlow: number;
-				investingCashFlow: number;
-				financingCashFlow: number;
-				freeCashFlow: number;
-				capitalExpenditure: number;
-			}>
-		>(`/api/financials/${ticker}/cashflow?period=${period}&limit=${limit}`, { token }),
-
-	getRevenueSegments: (ticker: string, period = 'annual', token?: string) =>
-		request<
-			Array<{
-				date: string;
-				segments: Array<{
-					name: string;
-					revenue: number;
-				}>;
-			}>
-		>(`/api/financials/${ticker}/segments?period=${period}`, { token }),
-
-	getInstitutionalHolders: (ticker: string, token?: string) =>
-		request<
-			Array<{
-				holder: string;
-				shares: number;
-				dateReported: string;
-				change: number;
-				changePercentage: number;
-			}>
-		>(`/api/financials/${ticker}/institutional`, { token }),
-
-	getHistoricalPrices: (ticker: string, period = '1y', token?: string) =>
-		request<{
-			ticker: string;
-			period: string;
-			history: Array<{ date: string; close: number }>;
-		}>(`/api/financials/${ticker}/history?period=${period}`, { token }),
+	getFinancials: financialsApi.getFinancials,
+	getProfile: financialsApi.getProfile,
+	getIncomeStatement: financialsApi.getIncomeStatement,
+	getBalanceSheet: financialsApi.getBalanceSheet,
+	getCashFlow: financialsApi.getCashFlow,
+	getRevenueSegments: financialsApi.getRevenueSegments,
+	getInstitutionalHolders: financialsApi.getInstitutionalHolders,
+	getHistoricalPrices: financialsApi.getHistoricalPrices,
+	getExecutives: financialsApi.getExecutives,
+	getRating: financialsApi.getRating,
+	getDCF: financialsApi.getDCF,
+	getPriceTarget: financialsApi.getPriceTarget,
+	getPeers: financialsApi.getPeers,
+	getDividends: financialsApi.getDividends,
+	getSplits: financialsApi.getSplits,
+	getFullFinancials: financialsApi.getFullFinancials,
+	getEarningsCalendar: financialsApi.getEarningsCalendar,
 
 	// News
-	getNews: (limit?: number, token?: string) =>
-		request<
-			Array<{
-				id: string;
-				ticker: string | null;
-				title: string;
-				content: string | null;
-				url: string;
-				imageUrl: string | null;
-				source: string | null;
-				publishedAt: string;
-				sentiment: string | null;
-			}>
-		>(`/api/news${limit ? `?limit=${limit}` : ''}`, { token }),
+	getNews: newsApi.getNews,
+	getNewsTrending: newsApi.getNewsTrending,
+	getTickerNews: newsApi.getTickerNews,
+	getNewsSummary: newsApi.getNewsSummary,
 
-	getNewsTrending: (limit?: number, token?: string) =>
-		request<
-			Array<{
-				id: string;
-				ticker: string | null;
-				title: string;
-				content: string | null;
-				url: string;
-				imageUrl: string | null;
-				source: string | null;
-				publishedAt: string;
-				sentiment: string | null;
-			}>
-		>(`/api/news/trending${limit ? `?limit=${limit}` : ''}`, { token }),
+	// Political
+	getPoliticalTrades: politicalApi.getPoliticalTrades,
+	getPoliticalTradesByTicker: politicalApi.getPoliticalTradesByTicker,
+	getPoliticalOfficials: politicalApi.getPoliticalOfficials,
+	getPoliticalOfficial: politicalApi.getPoliticalOfficial,
+	getSenateStats: politicalApi.getSenateStats,
+	getHouseStats: politicalApi.getHouseStats,
+	getOfficialStats: politicalApi.getOfficialStats,
 
-	getTickerNews: (ticker: string, limit?: number, token?: string) =>
-		request<
-			Array<{
-				id: string;
-				ticker: string | null;
-				title: string;
-				content: string | null;
-				url: string;
-				imageUrl: string | null;
-				source: string | null;
-				publishedAt: string;
-				sentiment: string | null;
-			}>
-		>(`/api/news/${ticker}${limit ? `?limit=${limit}` : ''}`, { token }),
+	// Insider
+	getInsiderTrades: insiderApi.getInsiderTrades,
+	getInsiderTradesByTicker: insiderApi.getInsiderTradesByTicker,
+	getInsiderStats: insiderApi.getInsiderStats,
 
-	getNewsSummary: (token?: string) =>
-		request<{
-			headlines: Array<{
-				id: string;
-				title: string;
-				url: string;
-				source: string | null;
-				publishedAt: string;
-			}>;
-			latestNews: Array<{
-				id: string;
-				title: string;
-				url: string;
-				source: string | null;
-				publishedAt: string;
-			}>;
-			generatedAt: string;
-		}>('/api/news/summary', { token }),
+	// Economic
+	getEconomicIndicators: economicApi.getEconomicIndicators,
+	getEconomicDashboard: economicApi.getEconomicDashboard,
+	getEconomicSeries: economicApi.getEconomicSeries,
+	getAvailableEconomicSeries: economicApi.getAvailableEconomicSeries,
 
-	// Political trades
-	getPoliticalTrades: (
-		options?: { party?: string; chamber?: string; transactionType?: string; ticker?: string; limit?: number },
-		token?: string
-	) => {
-		const params = new URLSearchParams();
-		if (options?.party) params.set('party', options.party);
-		if (options?.chamber) params.set('chamber', options.chamber);
-		if (options?.transactionType) params.set('transactionType', options.transactionType);
-		if (options?.ticker) params.set('ticker', options.ticker);
-		if (options?.limit) params.set('limit', String(options.limit));
-		const queryString = params.toString();
-		return request<
-			Array<{
-				id: number;
-				officialName: string;
-				ticker: string;
-				assetDescription: string;
-				transactionType: string;
-				transactionDate: string;
-				reportedDate: string;
-				amountMin: number | null;
-				amountMax: number | null;
-				amountDisplay: string;
-				party: string | null;
-				title: string | null;
-				state: string | null;
-				portraitUrl: string | null;
-				chamber: string;
-				isMock?: boolean;
-			}>
-		>(`/api/political/trades${queryString ? `?${queryString}` : ''}`, { token });
-	},
-
-	getPoliticalTradesByTicker: (ticker: string, limit?: number, token?: string) =>
-		request<
-			Array<{
-				id: number;
-				officialName: string;
-				ticker: string;
-				assetDescription: string;
-				transactionType: string;
-				transactionDate: string;
-				reportedDate: string;
-				amountDisplay: string;
-				party: string | null;
-				title: string | null;
-				state: string | null;
-				chamber: string;
-			}>
-		>(`/api/political/trades/${ticker}${limit ? `?limit=${limit}` : ''}`, { token }),
-
-	getPoliticalOfficials: (options?: { party?: string; chamber?: string; limit?: number }, token?: string) => {
-		const params = new URLSearchParams();
-		if (options?.party) params.set('party', options.party);
-		if (options?.chamber) params.set('chamber', options.chamber);
-		if (options?.limit) params.set('limit', String(options.limit));
-		const queryString = params.toString();
-		return request<
-			Array<{
-				id: string;
-				name: string;
-				title: string | null;
-				party: string | null;
-				state: string | null;
-				district: string | null;
-				portraitUrl: string | null;
-				chamber: string;
-			}>
-		>(`/api/political/officials${queryString ? `?${queryString}` : ''}`, { token });
-	},
-
-	getPoliticalOfficial: (name: string, token?: string) =>
-		request<{
-			id: string;
-			name: string;
-			title: string | null;
-			party: string | null;
-			state: string | null;
-			district: string | null;
-			portraitUrl: string | null;
-			chamber: string;
-			recentTrades: Array<{
-				id: number;
-				officialName: string;
-				ticker: string;
-				assetDescription: string | null;
-				transactionType: string;
-				transactionDate: string;
-				reportedDate: string;
-				amountDisplay: string;
-				party: string | null;
-				title: string | null;
-				state: string | null;
-				chamber: string;
-			}>;
-		}>(`/api/political/officials/${encodeURIComponent(name)}`, { token }),
-
-	// Newsletter
-	subscribeNewsletter: (email: string, name?: string) =>
-		request<{ message: string }>('/api/newsletter/subscribe', {
-			method: 'POST',
-			body: JSON.stringify({ email, name })
-		}),
-
-	unsubscribeNewsletter: (token: string) =>
-		request<{ message: string }>('/api/newsletter/unsubscribe', {
-			method: 'POST',
-			body: JSON.stringify({ token })
-		}),
-
-	// Economic Data (FRED)
-	getEconomicIndicators: (token?: string) =>
-		request<Record<string, {
-			seriesId: string;
-			name: string;
-			unit: string;
-			frequency: string;
-			latest: { date: string; value: number } | null;
-			change: number | null;
-			changePercent: number | null;
-			history: Array<{ date: string; value: number }>;
-		}>>('/api/economic/indicators', { token }),
-
-	getEconomicDashboard: (token?: string) =>
-		request<{
-			fedFundsRate: { latest: { date: string; value: number } | null } | null;
-			treasury10Y: { latest: { date: string; value: number } | null } | null;
-			treasury2Y: { latest: { date: string; value: number } | null } | null;
-			yieldSpread: { latest: { date: string; value: number } | null } | null;
-			unemployment: { latest: { date: string; value: number } | null } | null;
-			cpi: { latest: { date: string; value: number } | null } | null;
-			vix: { latest: { date: string; value: number } | null } | null;
-			oilPrice: { latest: { date: string; value: number } | null } | null;
-			mortgageRate: { latest: { date: string; value: number } | null } | null;
-			gdp: { latest: { date: string; value: number } | null } | null;
-		}>('/api/economic/dashboard', { token }),
-
-	getEconomicSeries: (seriesId: string, limit?: number, token?: string) =>
-		request<{
-			seriesId: string;
-			name: string;
-			unit: string;
-			frequency: string;
-			latest: { date: string; value: number } | null;
-			change: number | null;
-			changePercent: number | null;
-			history: Array<{ date: string; value: number }>;
-		}>(`/api/economic/series/${seriesId}${limit ? `?limit=${limit}` : ''}`, { token }),
-
-	getAvailableEconomicSeries: (token?: string) =>
-		request<
-			Array<{
-				seriesId: string;
-				name: string;
-				unit: string;
-				frequency: string;
-			}>
-		>('/api/economic/available', { token }),
-
-	// Charts (OHLC with DB-first caching)
-	getOHLC: (ticker: string, period = '1y', token?: string) =>
-		request<{
-			ticker: string;
-			period: string;
-			count: number;
-			ohlc: Array<{
-				time: string;
-				open: number;
-				high: number;
-				low: number;
-				close: number;
-				volume: number;
-			}>;
-		}>(`/api/charts/${ticker}/ohlc?period=${period}`, { token }),
-
-	getIndicators: (
-		ticker: string,
-		options: {
-			period?: string;
-			sma?: string;
-			ema?: string;
-			rsi?: boolean;
-			macd?: boolean;
-			bollinger?: boolean;
-		} = {},
-		token?: string
-	) => {
-		const params = new URLSearchParams();
-		if (options.period) params.set('period', options.period);
-		if (options.sma) params.set('sma', options.sma);
-		if (options.ema) params.set('ema', options.ema);
-		if (options.rsi !== undefined) params.set('rsi', String(options.rsi));
-		if (options.macd !== undefined) params.set('macd', String(options.macd));
-		if (options.bollinger !== undefined) params.set('bollinger', String(options.bollinger));
-
-		return request<{
-			ticker: string;
-			period: string;
-			count: number;
-			indicators: Array<{
-				time: string;
-				open: number;
-				high: number;
-				low: number;
-				close: number;
-				volume: number;
-				sma20?: number | null;
-				sma50?: number | null;
-				sma200?: number | null;
-				ema12?: number | null;
-				ema26?: number | null;
-				rsi?: number | null;
-				macd?: number | null;
-				macdSignal?: number | null;
-				macdHistogram?: number | null;
-				bollingerUpper?: number | null;
-				bollingerMiddle?: number | null;
-				bollingerLower?: number | null;
-			}>;
-		}>(`/api/charts/${ticker}/indicators?${params.toString()}`, { token });
-	},
-
-	getDataFreshness: (ticker: string, token?: string) =>
-		request<{
-			ticker: string;
-			earliestDate: string | null;
-			latestDate: string | null;
-			recordCount: number;
-		}>(`/api/charts/${ticker}/freshness`, { token }),
-
-	// Executives
-	getExecutives: (ticker: string, token?: string) =>
-		request<
-			Array<{
-				name: string;
-				title: string;
-				pay: number | null;
-				currencyPay: string;
-				gender: string;
-				yearBorn: number;
-				titleSince: number;
-			}>
-		>(`/api/financials/${ticker}/executives`, { token }),
-
-	// Analyst Rating
-	getRating: (ticker: string, token?: string) =>
-		request<{
-			ticker: string;
-			date: string;
-			rating: string;
-			ratingScore: number;
-			ratingRecommendation: string;
-		}>(`/api/financials/${ticker}/rating`, { token }),
-
-	// DCF Intrinsic Value
-	getDCF: (ticker: string, token?: string) =>
-		request<{
-			ticker: string;
-			date: string;
-			dcf: number;
-			stockPrice: number;
-		}>(`/api/financials/${ticker}/dcf`, { token }),
-
-	// Price Target
-	getPriceTarget: (ticker: string, token?: string) =>
-		request<{
-			ticker: string;
-			targetHigh: number;
-			targetLow: number;
-			targetConsensus: number;
-			targetMedian: number;
-		}>(`/api/financials/${ticker}/price-target`, { token }),
-
-	// Peers/Competitors
-	getPeers: (ticker: string, token?: string) =>
-		request<string[]>(`/api/financials/${ticker}/peers`, { token }),
-
-	// Stock Dividends
-	getDividends: (ticker: string, token?: string) =>
-		request<
-			Array<{
-				date: string;
-				dividend: number;
-				paymentDate: string;
-			}>
-		>(`/api/financials/${ticker}/dividends`, { token }),
-
-	// Stock Splits
-	getSplits: (ticker: string, token?: string) =>
-		request<
-			Array<{
-				date: string;
-				label: string;
-				numerator: number;
-				denominator: number;
-			}>
-		>(`/api/financials/${ticker}/splits`, { token }),
-
-	// Full financial data (single call for page load)
-	getFullFinancials: (ticker: string, token?: string) =>
-		request<{
-			profile: {
-				ticker: string;
-				name: string;
-				sector: string;
-				industry: string;
-				description: string;
-				ceo: string;
-				employees: number;
-				website: string;
-				ipoDate: string;
-				image: string;
-			} | null;
-			executives: Array<{
-				name: string;
-				title: string;
-				pay: number | null;
-			}>;
-			metrics: {
-				peRatio: number;
-				pbRatio: number;
-				debtToEquity: number;
-				roe: number;
-				dividendYield: number;
-			} | null;
-			rating: {
-				rating: string;
-				ratingScore: number;
-				ratingRecommendation: string;
-			} | null;
-			dcf: {
-				dcf: number;
-				stockPrice: number;
-			} | null;
-			priceTarget: {
-				targetHigh: number;
-				targetLow: number;
-				targetConsensus: number;
-			} | null;
-			peers: string[];
-		}>(`/api/financials/${ticker}/full`, { token }),
+	// Charts
+	getOHLC: chartsApi.getOHLC,
+	getIndicators: chartsApi.getIndicators,
+	getDataFreshness: chartsApi.getDataFreshness,
 
 	// Alerts
-	getAlerts: (options?: { unreadOnly?: boolean; limit?: number }, token?: string) => {
-		const params = new URLSearchParams();
-		if (options?.unreadOnly) params.set('unreadOnly', 'true');
-		if (options?.limit) params.set('limit', String(options.limit));
-		const queryString = params.toString();
-		return request<{
-			alerts: Array<{
-				id: number;
-				ticker: string;
-				officialName: string;
-				transactionType: string;
-				amountDisplay: string;
-				createdAt: string;
-				readAt: string | null;
-				assetDescription: string | null;
-				transactionDate: string | null;
-				reportedDate: string | null;
-				party: string | null;
-				title: string | null;
-				state: string | null;
-				portraitUrl: string | null;
-			}>;
-			unreadCount: number;
-		}>(`/api/alerts${queryString ? `?${queryString}` : ''}`, { token });
-	},
+	getAlerts: alertsApi.getAlerts,
+	getUnreadAlertCount: alertsApi.getUnreadAlertCount,
+	markAlertRead: alertsApi.markAlertRead,
+	markAllAlertsRead: alertsApi.markAllAlertsRead,
+	getIdeaAlerts: alertsApi.getIdeaAlerts,
+	getUnreadIdeaAlertCount: alertsApi.getUnreadIdeaAlertCount,
+	markIdeaAlertRead: alertsApi.markIdeaAlertRead,
 
-	getUnreadAlertCount: (token?: string) =>
-		request<{ count: number }>('/api/alerts/count', { token }),
-
-	markAlertRead: (alertId: number, token?: string) =>
-		request<{ message: string }>(`/api/alerts/${alertId}/read`, {
-			method: 'POST',
-			token
-		}),
-
-	markAllAlertsRead: (token?: string) =>
-		request<{ message: string }>('/api/alerts/read-all', {
-			method: 'POST',
-			token
-		}),
-
-	// Idea Alerts
-	getIdeaAlerts: (options?: { unreadOnly?: boolean; limit?: number }, token?: string) => {
-		const params = new URLSearchParams();
-		if (options?.unreadOnly) params.set('unreadOnly', 'true');
-		if (options?.limit) params.set('limit', String(options.limit));
-		const queryString = params.toString();
-		return request<{
-			alerts: Array<{
-				id: number;
-				ideaId: number;
-				ticker: string;
-				alertType: 'target_hit' | 'stopped_out';
-				triggerPrice: number;
-				entryPrice: number | null;
-				targetPrice: number | null;
-				stopLoss: number | null;
-				pnlPercent: number | null;
-				ideaTitle: string | null;
-				createdAt: string;
-				readAt: string | null;
-			}>;
-			unreadCount: number;
-		}>(`/api/alerts/ideas${queryString ? `?${queryString}` : ''}`, { token });
-	},
-
-	getUnreadIdeaAlertCount: (token?: string) =>
-		request<{ count: number }>('/api/alerts/ideas/count', { token }),
-
-	markIdeaAlertRead: (alertId: number, token?: string) =>
-		request<{ message: string }>(`/api/alerts/ideas/${alertId}/read`, {
-			method: 'POST',
-			token
-		}),
-
-	// Trading Ideas
-	getTradingIdeas: (status?: string, token?: string) =>
-		request<
-			Array<{
-				id: number;
-				user_id: string;
-				ticker: string;
-				title: string | null;
-				thesis: string;
-				entry_price: number | null;
-				target_price: number | null;
-				stop_loss: number | null;
-				timeframe: 'intraday' | 'swing' | 'position' | 'long_term' | null;
-				sentiment: 'bullish' | 'bearish' | 'neutral' | null;
-				status: 'open' | 'closed' | 'stopped_out' | 'target_hit';
-				actual_exit_price: number | null;
-				closed_at: string | null;
-				created_at: string;
-				updated_at: string;
-			}>
-		>(`/api/ideas${status ? `?status=${status}` : ''}`, { token }),
-
-	getTradingIdea: (id: number, token: string) =>
-		request<{
-			id: number;
-			user_id: string;
-			ticker: string;
-			title: string | null;
-			thesis: string;
-			entry_price: number | null;
-			target_price: number | null;
-			stop_loss: number | null;
-			timeframe: 'intraday' | 'swing' | 'position' | 'long_term' | null;
-			sentiment: 'bullish' | 'bearish' | 'neutral' | null;
-			status: 'open' | 'closed' | 'stopped_out' | 'target_hit';
-			actual_exit_price: number | null;
-			closed_at: string | null;
-			created_at: string;
-			updated_at: string;
-		}>(`/api/ideas/${id}`, { token }),
-
-	createTradingIdea: (
-		token: string,
-		data: {
-			ticker: string;
-			title?: string;
-			thesis: string;
-			entryPrice?: number;
-			targetPrice?: number;
-			stopLoss?: number;
-			timeframe?: 'intraday' | 'swing' | 'position' | 'long_term';
-			sentiment?: 'bullish' | 'bearish' | 'neutral';
-		}
-	) =>
-		request<{
-			id: number;
-			ticker: string;
-			title: string | null;
-			thesis: string;
-			entry_price: number | null;
-			target_price: number | null;
-			stop_loss: number | null;
-			timeframe: string | null;
-			sentiment: string | null;
-			status: string;
-			created_at: string;
-		}>('/api/ideas', {
-			method: 'POST',
-			token,
-			body: JSON.stringify(data)
-		}),
-
-	updateTradingIdea: (
-		token: string,
-		id: number,
-		data: {
-			title?: string;
-			thesis?: string;
-			entryPrice?: number;
-			targetPrice?: number;
-			stopLoss?: number;
-			timeframe?: 'intraday' | 'swing' | 'position' | 'long_term';
-			sentiment?: 'bullish' | 'bearish' | 'neutral';
-		}
-	) =>
-		request<{
-			id: number;
-			ticker: string;
-			thesis: string;
-			status: string;
-			updated_at: string;
-		}>(`/api/ideas/${id}`, {
-			method: 'PUT',
-			token,
-			body: JSON.stringify(data)
-		}),
-
-	closeTradingIdea: (
-		token: string,
-		id: number,
-		exitPrice: number,
-		status: 'closed' | 'stopped_out' | 'target_hit' = 'closed'
-	) =>
-		request<{
-			id: number;
-			ticker: string;
-			status: string;
-			actual_exit_price: number;
-			closed_at: string;
-		}>(`/api/ideas/${id}/close`, {
-			method: 'POST',
-			token,
-			body: JSON.stringify({ exitPrice, status })
-		}),
-
-	deleteTradingIdea: (token: string, id: number) =>
-		request<{ message: string }>(`/api/ideas/${id}`, {
-			method: 'DELETE',
-			token
-		}),
-
-	getTradingIdeasStats: (token: string) =>
-		request<{
-			totalIdeas: number;
-			openIdeas: number;
-			closedIdeas: number;
-			targetHitCount: number;
-			stoppedOutCount: number;
-			winRate: number;
-			avgPnlPercent: number;
-		}>('/api/ideas/stats', { token }),
-
-	exportTradingIdeas: async (token: string): Promise<Blob> => {
-		const response = await fetch(`${API_BASE}/api/ideas/export`, {
-			headers: { Authorization: `Bearer ${token}` }
-		});
-		return response.blob();
-	},
-
-	exportTradingIdeasPDF: async (token: string): Promise<Blob> => {
-		const response = await fetch(`${API_BASE}/api/ideas/export/pdf`, {
-			headers: { Authorization: `Bearer ${token}` }
-		});
-		return response.blob();
-	},
-
-	// Earnings Calendar
-	getEarningsCalendar: (days = 7) =>
-		request<
-			Array<{
-				symbol: string;
-				date: string;
-				time: string;
-				epsEstimate: number | null;
-				revenue: number | null;
-				revenueEstimate: number | null;
-			}>
-		>(`/api/financials/earnings/calendar?days=${days}`),
-
-	// Search
-	searchSymbols: (query: string, limit = 8) =>
-		request<Array<{ symbol: string; name: string; exchange: string }>>(
-			`/api/search/symbols?q=${encodeURIComponent(query)}&limit=${limit}`
-		),
+	// Ideas
+	getTradingIdeas: ideasApi.getTradingIdeas,
+	getTradingIdea: ideasApi.getTradingIdea,
+	createTradingIdea: ideasApi.createTradingIdea,
+	updateTradingIdea: ideasApi.updateTradingIdea,
+	closeTradingIdea: ideasApi.closeTradingIdea,
+	deleteTradingIdea: ideasApi.deleteTradingIdea,
+	getTradingIdeasStats: ideasApi.getTradingIdeasStats,
+	exportTradingIdeas: ideasApi.exportTradingIdeas,
+	exportTradingIdeasPDF: ideasApi.exportTradingIdeasPDF,
 
 	// Portfolio
-	getPortfolio: (token: string) =>
-		request<
-			Array<{
-				id: string;
-				ticker: string;
-				shares: number;
-				costBasis: number;
-				purchaseDate: string | null;
-				notes: string | null;
-				createdAt: string;
-				updatedAt: string;
-			}>
-		>('/api/portfolio', { token }),
+	getPortfolio: portfolioApi.getPortfolio,
+	getPortfolioSummary: portfolioApi.getPortfolioSummary,
+	addPortfolioHolding: portfolioApi.addPortfolioHolding,
+	updatePortfolioHolding: portfolioApi.updatePortfolioHolding,
+	deletePortfolioHolding: portfolioApi.deletePortfolioHolding,
 
-	getPortfolioSummary: (token: string) =>
-		request<
-			Array<{
-				ticker: string;
-				totalShares: number;
-				avgCostBasis: number | null;
-			}>
-		>('/api/portfolio/summary', { token }),
+	// Newsletter
+	subscribeNewsletter: newsletterApi.subscribeNewsletter,
+	unsubscribeNewsletter: newsletterApi.unsubscribeNewsletter,
 
-	addPortfolioHolding: (
-		token: string,
-		data: {
-			ticker: string;
-			shares: number;
-			costBasis: number;
-			purchaseDate?: string;
-			notes?: string;
-		}
-	) =>
-		request<{
-			id: string;
-			ticker: string;
-			shares: number;
-			costBasis: number;
-			purchaseDate: string | null;
-			notes: string | null;
-			createdAt: string;
-		}>('/api/portfolio', {
-			method: 'POST',
-			token,
-			body: JSON.stringify(data)
-		}),
-
-	updatePortfolioHolding: (
-		token: string,
-		id: string,
-		data: {
-			shares?: number;
-			costBasis?: number;
-			purchaseDate?: string;
-			notes?: string;
-		}
-	) =>
-		request<{
-			id: string;
-			ticker: string;
-			shares: number;
-			costBasis: number;
-			purchaseDate: string | null;
-			notes: string | null;
-			updatedAt: string;
-		}>(`/api/portfolio/${id}`, {
-			method: 'PUT',
-			token,
-			body: JSON.stringify(data)
-		}),
-
-	deletePortfolioHolding: (token: string, id: string) =>
-		request<{ message: string }>(`/api/portfolio/${id}`, {
-			method: 'DELETE',
-			token
-		}),
-
-	// Insider Trading
-	getInsiderTrades: (options?: { ticker?: string; transactionType?: string; limit?: number; page?: number }, token?: string) => {
-		const params = new URLSearchParams();
-		if (options?.ticker) params.set('ticker', options.ticker);
-		if (options?.transactionType) params.set('transactionType', options.transactionType);
-		if (options?.limit) params.set('limit', String(options.limit));
-		if (options?.page) params.set('page', String(options.page));
-		const queryString = params.toString();
-		return request<
-			Array<{
-				id: number;
-				symbol: string;
-				companyName: string;
-				reporterName: string;
-				reporterTitle: string;
-				transactionType: string;
-				transactionDate: string;
-				filingDate: string;
-				sharesTransacted: number;
-				sharePrice: number;
-				totalValue: number;
-				sharesOwned: number;
-				isMock?: boolean;
-			}>
-		>(`/api/insider/trades${queryString ? `?${queryString}` : ''}`, { token });
-	},
-
-	getInsiderTradesByTicker: (ticker: string, limit?: number, token?: string) =>
-		request<
-			Array<{
-				id: number;
-				symbol: string;
-				companyName: string;
-				reporterName: string;
-				reporterTitle: string;
-				transactionType: string;
-				transactionDate: string;
-				filingDate: string;
-				sharesTransacted: number;
-				sharePrice: number;
-				totalValue: number;
-				sharesOwned: number;
-			}>
-		>(`/api/insider/trades/${ticker}${limit ? `?limit=${limit}` : ''}`, { token }),
-
-	getInsiderStats: (token?: string) =>
-		request<{
-			totalTrades: number;
-			purchaseCount: number;
-			saleCount: number;
-			totalValue: number;
-			topBuyers: Array<{ name: string; value: number }>;
-			topSellers: Array<{ name: string; value: number }>;
-		}>('/api/insider/stats', { token }),
-
-	// Political Chamber Stats
-	getSenateStats: (token?: string) =>
-		request<{
-			totalTrades: number;
-			buyCount: number;
-			sellCount: number;
-			uniqueTraders: number;
-			uniqueStocks: number;
-			topTraders: Array<{ name: string; count: number }>;
-			topStocks: Array<{ ticker: string; count: number }>;
-		}>('/api/political/senate/stats', { token }),
-
-	getHouseStats: (token?: string) =>
-		request<{
-			totalTrades: number;
-			buyCount: number;
-			sellCount: number;
-			uniqueTraders: number;
-			uniqueStocks: number;
-			topTraders: Array<{ name: string; count: number }>;
-			topStocks: Array<{ ticker: string; count: number }>;
-		}>('/api/political/house/stats', { token }),
-
-	getOfficialStats: (name: string, token?: string) =>
-		request<{
-			totalTrades: number;
-			buyCount: number;
-			sellCount: number;
-			uniqueStocks: number;
-			topStocks: Array<{ ticker: string; count: number }>;
-			avgReportingDelay: number | null;
-			latestTrade: string | null;
-		}>(`/api/political/officials/${encodeURIComponent(name)}/stats`, { token })
+	// Search
+	searchSymbols: searchApi.searchSymbols
 };
 
 export default api;

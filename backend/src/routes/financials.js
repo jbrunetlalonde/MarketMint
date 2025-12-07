@@ -532,6 +532,82 @@ router.get('/:ticker/peers', async (req, res, next) => {
 });
 
 /**
+ * GET /api/financials/:ticker/segments
+ * Get revenue by segment/product
+ */
+router.get('/:ticker/segments', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+    const { period = 'annual' } = req.query;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getRevenueSegments(validation.ticker, period);
+      res.json({ success: true, data });
+    } catch (err) {
+      res.json({ success: true, data: [] });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/institutional
+ * Get institutional holders
+ */
+router.get('/:ticker/institutional', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getInstitutionalHolders(validation.ticker);
+      res.json({ success: true, data });
+    } catch (err) {
+      res.json({ success: true, data: [] });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/earnings/calendar
+ * Get upcoming earnings calendar
+ */
+router.get('/earnings/calendar', async (req, res, next) => {
+  try {
+    const { days = 7 } = req.query;
+    const numDays = Math.min(Math.max(parseInt(days) || 7, 1), 30);
+
+    const today = new Date();
+    const from = today.toISOString().split('T')[0];
+    const toDate = new Date(today);
+    toDate.setDate(toDate.getDate() + numDays);
+    const to = toDate.toISOString().split('T')[0];
+
+    try {
+      const data = await fmp.getEarningsCalendar(from, to);
+      res.json({ success: true, data });
+    } catch (err) {
+      console.warn('Earnings calendar fetch failed:', err.message);
+      res.json({ success: true, data: [] });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/financials/:ticker/full
  * Get all financial data in one call (for initial page load)
  */

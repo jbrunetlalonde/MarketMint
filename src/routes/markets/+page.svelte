@@ -4,21 +4,11 @@
 	import { formatRelativeTime } from '$lib/utils/urls';
 	import { quotes } from '$lib/stores/quotes.svelte';
 	import PriceCard from '$lib/components/PriceCard.svelte';
-	import PortraitCard from '$lib/components/PortraitCard.svelte';
 	import ErrorCard from '$lib/components/ErrorCard.svelte';
 	import NewsCard from '$lib/components/NewsCard.svelte';
+	import SectorPerformance from '$lib/components/SectorPerformance.svelte';
+	import EarningsCalendar from '$lib/components/EarningsCalendar.svelte';
 	import api from '$lib/utils/api';
-
-	const FEATURED_CEOS = [
-		{ name: 'Tim Cook', company: 'Apple' },
-		{ name: 'Satya Nadella', company: 'Microsoft' },
-		{ name: 'Elon Musk', company: 'Tesla' }
-	];
-
-	const FEATURED_OFFICIALS = [
-		{ name: 'Chuck Schumer', title: 'Senator, NY' },
-		{ name: 'Mitch McConnell', title: 'Senator, KY' }
-	];
 
 	// Market indices to track
 	const INDICES = ['SPY', 'DIA', 'QQQ', 'IWM'];
@@ -437,31 +427,13 @@
 			{/if}
 		</div>
 
-		<!-- Congress Trading -->
-		<h3 class="headline headline-md mt-6">Congress Traders</h3>
-		<div class="grid grid-cols-2 gap-2 mt-2">
-			{#each FEATURED_OFFICIALS as official (official.name)}
-				<PortraitCard
-					name={official.name}
-					title={official.title}
-					category="senate"
-					class="text-xs"
-				/>
-			{/each}
-		</div>
+		<!-- Sector Performance -->
+		<h3 class="headline headline-md mt-6">Sector Performance</h3>
+		<SectorPerformance />
 
-		<!-- Tech CEOs -->
-		<h3 class="headline headline-md mt-6">Tech Leaders</h3>
-		<div class="grid grid-cols-3 gap-2 mt-2">
-			{#each FEATURED_CEOS as ceo (ceo.name)}
-				<PortraitCard
-					name={ceo.name}
-					company={ceo.company}
-					category="ceo"
-					class="text-xs"
-				/>
-			{/each}
-		</div>
+		<!-- Upcoming Earnings -->
+		<h3 class="headline headline-md mt-6">Upcoming Earnings</h3>
+		<EarningsCalendar />
 	</aside>
 
 	<!-- Bottom Section - Disclaimer -->

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import api from '$lib/utils/api';
 	import { getCongressPortraitUrl } from '$lib/utils/urls';
+	import { getPartyAbbrev, getPartyClass, getInitials } from '$lib/utils/political';
 
 	interface Official {
 		id: string;
@@ -70,33 +71,8 @@
 		}
 	}
 
-	function getPartyAbbrev(party?: string | null): string {
-		if (!party) return '?';
-		const p = party.toLowerCase();
-		if (p.includes('democrat')) return 'D';
-		if (p.includes('republican')) return 'R';
-		return party.charAt(0).toUpperCase();
-	}
-
-	function getPartyClass(party?: string | null): string {
-		if (!party) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
-		const p = party.toLowerCase();
-		if (p.includes('democrat')) return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-		if (p.includes('republican')) return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-		return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
-	}
-
 	function getPortraitUrl(name: string, chamber: string): string {
 		return getCongressPortraitUrl(name, chamber as 'senate' | 'house');
-	}
-
-	function getInitials(name: string): string {
-		return name
-			.split(' ')
-			.map((n) => n.charAt(0))
-			.join('')
-			.toUpperCase()
-			.slice(0, 2);
 	}
 
 	$effect(() => {
@@ -185,6 +161,8 @@
 									src={getPortraitUrl(member.name, 'house')}
 									alt={member.name}
 									class="member-portrait"
+									loading="lazy"
+									decoding="async"
 									onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
 								/>
 								<div class="member-info">
@@ -220,6 +198,8 @@
 									src={getPortraitUrl(member.name, 'senate')}
 									alt={member.name}
 									class="member-portrait"
+									loading="lazy"
+									decoding="async"
 									onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
 								/>
 								<div class="member-info">
@@ -258,6 +238,8 @@
 									src={getPortraitUrl(member.name, member.chamber)}
 									alt={member.name}
 									class="member-card-portrait"
+									loading="lazy"
+									decoding="async"
 									onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
 								/>
 								<div class="member-card-info">

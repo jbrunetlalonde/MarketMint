@@ -238,6 +238,8 @@
 								src={getPortraitUrl(trade.reporterName)}
 								alt={trade.reporterName}
 								class="insider-portrait"
+								loading="lazy"
+								decoding="async"
 								onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
 							/>
 							<div class="insider-info">
@@ -313,6 +315,8 @@
 											src={getPortraitUrl(trade.reporterName)}
 											alt={trade.reporterName}
 											class="w-10 h-12 object-contain border border-ink-light bg-newsprint flex-shrink-0"
+											loading="lazy"
+											decoding="async"
 											onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
 										/>
 										<div>

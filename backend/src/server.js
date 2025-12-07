@@ -117,6 +117,8 @@ app.use('/portraits', express.static(path.join(__dirname, '../portraits'), {
     // Set cache headers for maximum performance
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Allow cross-origin requests for images (frontend on different port)
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   }
 }));
 

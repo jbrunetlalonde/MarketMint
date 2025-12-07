@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ApiError } from '../middleware/errorHandler.js';
 import politicalTracker from '../services/politicalTracker.js';
+import { validatePagination, validateTicker, sanitizeString } from '../utils/validation.js';
 
 const router = Router();
 
@@ -225,15 +226,20 @@ function getMockTrades(options = {}) {
  */
 router.get('/trades', async (req, res, next) => {
   try {
-    const { party, ticker, chamber, transactionType, limit = 50 } = req.query;
+    const { party, ticker, chamber, transactionType, limit } = req.query;
+    const { limit: safeLimit } = validatePagination(0, limit);
+    const safeParty = sanitizeString(party);
+    const safeTicker = ticker ? sanitizeString(ticker, 5)?.toUpperCase() : undefined;
+    const safeChamber = sanitizeString(chamber);
+    const safeType = sanitizeString(transactionType);
 
     try {
       const trades = await politicalTracker.getRecentTrades({
-        party,
-        ticker,
-        chamber,
-        transactionType,
-        limit: parseInt(limit)
+        party: safeParty,
+        ticker: safeTicker,
+        chamber: safeChamber,
+        transactionType: safeType,
+        limit: safeLimit
       });
 
       // If no trades found, use mock data
@@ -268,18 +274,16 @@ router.get('/trades', async (req, res, next) => {
 router.get('/trades/:ticker', async (req, res, next) => {
   try {
     const { ticker } = req.params;
-    const { limit = 50 } = req.query;
-
-    if (!ticker || !/^[A-Z]{1,5}$/.test(ticker.toUpperCase())) {
-      throw new ApiError(400, 'Invalid ticker symbol');
-    }
+    const { limit } = req.query;
+    const safeTicker = validateTicker(ticker);
+    const { limit: safeLimit } = validatePagination(0, limit);
 
     try {
-      const trades = await politicalTracker.getCongressionalTrades(ticker.toUpperCase());
+      const trades = await politicalTracker.getCongressionalTrades(safeTicker);
 
       res.json({
         success: true,
-        data: trades.slice(0, parseInt(limit))
+        data: trades.slice(0, safeLimit)
       });
     } catch (err) {
       console.warn(`Finnhub trades for ${ticker} failed:`, err.message);
@@ -300,12 +304,15 @@ router.get('/trades/:ticker', async (req, res, next) => {
  */
 router.get('/officials', async (req, res, next) => {
   try {
-    const { party, chamber, limit = 100 } = req.query;
+    const { party, chamber, limit } = req.query;
+    const { limit: safeLimit } = validatePagination(0, limit, { defaultLimit: 100, maxLimit: 600 });
+    const safeParty = sanitizeString(party);
+    const safeChamber = sanitizeString(chamber);
 
     const officials = await politicalTracker.getOfficials({
-      party,
-      chamber,
-      limit: parseInt(limit)
+      party: safeParty,
+      chamber: safeChamber,
+      limit: safeLimit
     });
 
     res.json({
@@ -417,17 +424,13 @@ router.post('/refresh', async (req, res, next) => {
 
 /**
  * GET /api/political/senate/stats
- * Get Senate trading statistics
+ * Get Senate trading statistics (SQL aggregation)
  */
 router.get('/senate/stats', async (req, res, next) => {
   try {
-    const trades = await politicalTracker.getRecentTrades({ chamber: 'senate', limit: 500 });
+    const stats = await politicalTracker.getChamberStats('senate');
 
-    const senateTrades = trades.filter(t =>
-      t.title?.toLowerCase().includes('senator')
-    );
-
-    if (senateTrades.length === 0) {
+    if (stats.totalTrades === 0) {
       const mockTrades = getMockTrades({ chamber: 'senate', limit: 100 });
       return res.json({
         success: true,
@@ -437,7 +440,7 @@ router.get('/senate/stats', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: computeStats(senateTrades)
+      data: stats
     });
   } catch (err) {
     next(err);
@@ -446,18 +449,13 @@ router.get('/senate/stats', async (req, res, next) => {
 
 /**
  * GET /api/political/house/stats
- * Get House trading statistics
+ * Get House trading statistics (SQL aggregation)
  */
 router.get('/house/stats', async (req, res, next) => {
   try {
-    const trades = await politicalTracker.getRecentTrades({ chamber: 'house', limit: 500 });
+    const stats = await politicalTracker.getChamberStats('house');
 
-    const houseTrades = trades.filter(t => {
-      const title = t.title?.toLowerCase() || '';
-      return title.includes('representative') || title.includes('rep.');
-    });
-
-    if (houseTrades.length === 0) {
+    if (stats.totalTrades === 0) {
       const mockTrades = getMockTrades({ chamber: 'house', limit: 100 });
       return res.json({
         success: true,
@@ -467,7 +465,7 @@ router.get('/house/stats', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: computeStats(houseTrades)
+      data: stats
     });
   } catch (err) {
     next(err);
@@ -476,63 +474,22 @@ router.get('/house/stats', async (req, res, next) => {
 
 /**
  * GET /api/political/officials/:name/stats
- * Get statistics for a specific official
+ * Get statistics for a specific official (SQL aggregation)
  */
 router.get('/officials/:name/stats', async (req, res, next) => {
   try {
     const { name } = req.params;
     const decodedName = decodeURIComponent(name);
 
-    const allTrades = await politicalTracker.getRecentTrades({ limit: 500 });
-    const officialTrades = allTrades.filter(t =>
-      t.officialName.toLowerCase() === decodedName.toLowerCase()
-    );
+    const stats = await politicalTracker.getOfficialStats(decodedName);
 
-    if (officialTrades.length === 0) {
+    if (!stats) {
       throw new ApiError(404, 'No trades found for this official');
     }
 
-    const buyCount = officialTrades.filter(t => t.transactionType === 'BUY').length;
-    const sellCount = officialTrades.filter(t => t.transactionType === 'SELL').length;
-
-    const tickerCounts = {};
-    const sectorCounts = {};
-
-    officialTrades.forEach(t => {
-      tickerCounts[t.ticker] = (tickerCounts[t.ticker] || 0) + 1;
-    });
-
-    const topStocks = Object.entries(tickerCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([ticker, count]) => ({ ticker, count }));
-
-    let totalGap = 0;
-    let gapCount = 0;
-    officialTrades.forEach(t => {
-      if (t.transactionDate && t.reportedDate) {
-        const gap = Math.ceil(
-          (new Date(t.reportedDate).getTime() - new Date(t.transactionDate).getTime()) /
-            (1000 * 60 * 60 * 24)
-        );
-        if (gap > 0) {
-          totalGap += gap;
-          gapCount++;
-        }
-      }
-    });
-
     res.json({
       success: true,
-      data: {
-        totalTrades: officialTrades.length,
-        buyCount,
-        sellCount,
-        uniqueStocks: Object.keys(tickerCounts).length,
-        topStocks,
-        avgReportingDelay: gapCount > 0 ? Math.round(totalGap / gapCount) : null,
-        latestTrade: officialTrades[0]?.transactionDate || null
-      }
+      data: stats
     });
   } catch (err) {
     next(err);

@@ -12,19 +12,35 @@
 		placeholder?: string;
 		onSelect?: (result: SearchResult) => void;
 		compact?: boolean;
+		expandable?: boolean;
 	}
 
-	let { placeholder = 'Search for stocks...', onSelect, compact = false }: Props = $props();
+	let { placeholder = 'Search for stocks...', onSelect, compact = false, expandable = false }: Props = $props();
 
 	let searchQuery = $state('');
 	let results = $state<SearchResult[]>([]);
 	let isLoading = $state(false);
 	let isOpen = $state(false);
+	let isExpanded = $state(!expandable);
 	let selectedIndex = $state(-1);
 	let hasSearched = $state(false);
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	let inputElement: HTMLInputElement | null = null;
 	let containerElement: HTMLDivElement | null = null;
+
+	function expandSearch() {
+		isExpanded = true;
+		setTimeout(() => inputElement?.focus(), 100);
+	}
+
+	function collapseSearch() {
+		if (!searchQuery.trim()) {
+			isExpanded = false;
+			isOpen = false;
+			results = [];
+			hasSearched = false;
+		}
+	}
 
 	function handleInput() {
 		if (debounceTimer) {
@@ -60,6 +76,10 @@
 			if (e.key === 'Enter') {
 				handleDirectSubmit();
 			}
+			if (e.key === 'Escape' && expandable) {
+				collapseSearch();
+				inputElement?.blur();
+			}
 			return;
 		}
 
@@ -83,6 +103,10 @@
 			case 'Escape':
 				isOpen = false;
 				selectedIndex = -1;
+				if (expandable) {
+					collapseSearch();
+					inputElement?.blur();
+				}
 				break;
 		}
 	}
@@ -93,8 +117,12 @@
 		if (onSelect) {
 			onSelect(result);
 			searchQuery = '';
+			if (expandable) collapseSearch();
 		} else {
-			searchQuery = result.symbol;
+			searchQuery = '';
+			if (expandable) {
+				isExpanded = false;
+			}
 			goto(`/ticker/${result.symbol}`);
 		}
 	}
@@ -106,18 +134,26 @@
 			if (onSelect) {
 				onSelect({ symbol: ticker, name: '', exchange: '' });
 				searchQuery = '';
+				if (expandable) collapseSearch();
 			} else {
+				searchQuery = '';
+				if (expandable) {
+					isExpanded = false;
+				}
 				goto(`/ticker/${ticker}`);
 			}
 		}
 	}
 
-	function handleBlur(e: FocusEvent) {
+	function handleBlur() {
 		setTimeout(() => {
 			if (!containerElement?.contains(document.activeElement)) {
 				isOpen = false;
+				if (expandable) {
+					collapseSearch();
+				}
 			}
-		}, 150);
+		}, 200);
 	}
 
 	function handleFocus() {
@@ -127,8 +163,24 @@
 	}
 </script>
 
-<div class="search-container" class:compact bind:this={containerElement}>
-	<div class="search-input-wrapper">
+<div class="search-container" class:compact class:expandable class:expanded={isExpanded} bind:this={containerElement}>
+	{#if expandable}
+		<button
+			type="button"
+			class="search-trigger"
+			class:hidden={isExpanded}
+			onclick={expandSearch}
+			aria-label="Open search"
+			tabindex={isExpanded ? -1 : 0}
+		>
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<circle cx="11" cy="11" r="8"></circle>
+				<path d="m21 21-4.35-4.35"></path>
+			</svg>
+		</button>
+	{/if}
+
+	<div class="search-input-wrapper" class:collapsed={expandable && !isExpanded}>
 		<svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 			<circle cx="11" cy="11" r="8"></circle>
 			<path d="m21 21-4.35-4.35"></path>
@@ -145,13 +197,14 @@
 			class="search-input"
 			autocomplete="off"
 			spellcheck="false"
+			tabindex={expandable && !isExpanded ? -1 : 0}
 		/>
 		{#if isLoading}
 			<div class="search-spinner"></div>
 		{/if}
 	</div>
 
-	{#if isOpen}
+	{#if isOpen && isExpanded}
 		<div class="search-dropdown">
 			{#if results.length > 0}
 				<ul>
@@ -191,6 +244,7 @@
 		position: relative;
 		display: flex;
 		align-items: center;
+		transition: width 0.2s ease, opacity 0.2s ease;
 	}
 
 	.search-icon {
@@ -292,12 +346,13 @@
 		border: none;
 		cursor: pointer;
 		text-align: left;
+		color: var(--color-ink);
 		transition: background-color 0.1s;
 	}
 
 	.search-result:hover,
 	.search-result.selected {
-		background-color: var(--color-newsprint);
+		background-color: var(--color-newsprint-dark);
 	}
 
 	.result-symbol {
@@ -319,7 +374,7 @@
 		color: var(--color-ink-muted);
 		text-transform: uppercase;
 		padding: 0.125rem 0.375rem;
-		background: var(--color-newsprint);
+		background: var(--color-newsprint-dark);
 		border-radius: 0.25rem;
 	}
 
@@ -378,5 +433,70 @@
 
 	.compact .no-results-hint {
 		font-size: 0.625rem;
+	}
+
+	/* Expandable search trigger button */
+	.search-trigger {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		padding: 0;
+		background: transparent;
+		border: 1px solid var(--color-border);
+		border-radius: 0.25rem;
+		cursor: pointer;
+		color: var(--color-ink-muted);
+		transition: all 0.2s ease;
+		position: absolute;
+		right: 0;
+		top: 50%;
+		transform: translateY(-50%);
+	}
+
+	.search-trigger:hover {
+		color: var(--color-ink);
+		border-color: var(--color-ink-muted);
+	}
+
+	.search-trigger.hidden {
+		opacity: 0;
+		pointer-events: none;
+		transform: translateY(-50%) scale(0.8);
+	}
+
+	.search-trigger svg {
+		width: 1rem;
+		height: 1rem;
+	}
+
+	/* Expandable mode - collapsed state */
+	.expandable {
+		width: auto;
+		min-width: 2rem;
+	}
+
+	.expandable .search-input-wrapper {
+		width: 200px;
+		overflow: hidden;
+	}
+
+	.expandable .search-input-wrapper.collapsed {
+		width: 0;
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.expandable.expanded .search-input-wrapper {
+		width: 200px;
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.expandable .search-dropdown {
+		min-width: 280px;
+		right: 0;
+		left: auto;
 	}
 </style>

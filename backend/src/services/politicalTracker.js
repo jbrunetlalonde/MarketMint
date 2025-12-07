@@ -1,10 +1,24 @@
 import { config } from '../config/env.js';
 import { query } from '../config/database.js';
+import { LRUCache } from 'lru-cache';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 
-// In-memory cache for hot data
-const memoryCache = new Map();
+// LRU cache with size limits to prevent memory leaks
+const memoryCache = new LRUCache({
+  max: 500,                    // Max 500 entries
+  maxSize: 50 * 1024 * 1024,   // Max 50MB total
+  sizeCalculation: (value) => {
+    try {
+      return JSON.stringify(value).length;
+    } catch {
+      return 1000; // Default size if stringify fails
+    }
+  },
+  ttl: 1000 * 60 * 60,         // Default 1 hour TTL
+  updateAgeOnGet: true,        // Reset TTL on access
+  allowStale: false
+});
 
 // In-flight request deduplication
 const pendingRequests = new Map();
@@ -14,19 +28,11 @@ function getCacheKey(type, param = '') {
 }
 
 function getFromMemoryCache(key) {
-  const cached = memoryCache.get(key);
-  if (cached && Date.now() < cached.expires) {
-    return cached.data;
-  }
-  memoryCache.delete(key);
-  return null;
+  return memoryCache.get(key) || null;
 }
 
 function setMemoryCache(key, data, ttlSeconds) {
-  memoryCache.set(key, {
-    data,
-    expires: Date.now() + ttlSeconds * 1000
-  });
+  memoryCache.set(key, data, { ttl: ttlSeconds * 1000 });
 }
 
 async function deduplicatedRequest(key, fetchFn) {
@@ -120,11 +126,39 @@ async function saveTradeToDB(trade) {
   );
 }
 
-// Save multiple trades in batch
+// Save multiple trades in batch using multi-row insert
 async function saveBulkTrades(trades) {
+  if (!trades || trades.length === 0) return;
+
+  const values = [];
+  const params = [];
+  let paramIndex = 1;
+
   for (const trade of trades) {
-    await saveTradeToDB(trade);
+    values.push(
+      `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, NOW())`
+    );
+    params.push(
+      trade.officialName,
+      trade.ticker,
+      trade.assetDescription,
+      trade.transactionType,
+      trade.transactionDate,
+      trade.reportedDate,
+      trade.amountMin,
+      trade.amountMax,
+      trade.amountDisplay
+    );
   }
+
+  await query(
+    `INSERT INTO political_trades
+       (official_name, ticker, asset_description, transaction_type, transaction_date,
+        reported_date, amount_min, amount_max, amount_display, retrieved_at)
+     VALUES ${values.join(', ')}
+     ON CONFLICT DO NOTHING`,
+    params
+  );
 }
 
 // Upsert official in database
@@ -141,6 +175,39 @@ async function upsertOfficial(official) {
     [official.name, official.title, official.party, official.state, official.district]
   );
   return result.rows[0]?.id;
+}
+
+// Bulk upsert officials
+async function upsertBulkOfficials(officials) {
+  if (!officials || officials.length === 0) return;
+
+  const values = [];
+  const params = [];
+  let paramIndex = 1;
+
+  for (const official of officials) {
+    values.push(
+      `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`
+    );
+    params.push(
+      official.name,
+      official.title,
+      official.party,
+      official.state,
+      official.district
+    );
+  }
+
+  await query(
+    `INSERT INTO political_officials (name, title, party, state, district)
+     VALUES ${values.join(', ')}
+     ON CONFLICT (name) DO UPDATE SET
+       title = COALESCE(EXCLUDED.title, political_officials.title),
+       party = COALESCE(EXCLUDED.party, political_officials.party),
+       state = COALESCE(EXCLUDED.state, political_officials.state),
+       district = COALESCE(EXCLUDED.district, political_officials.district)`,
+    params
+  );
 }
 
 // Get trades from database
@@ -240,18 +307,20 @@ export async function getCongressionalTrades(ticker) {
       // Save to database for persistence
       await saveBulkTrades(trades);
 
-      // Extract unique officials and save them
-      const officials = [...new Set(trades.map(t => t.officialName))];
-      for (const name of officials) {
-        const trade = trades.find(t => t.officialName === name);
-        await upsertOfficial({
-          name,
-          title: trade?.position,
-          party: null,
-          state: null,
-          district: null
-        });
+      // Extract unique officials and bulk upsert them
+      const officialMap = new Map();
+      for (const trade of trades) {
+        if (!officialMap.has(trade.officialName)) {
+          officialMap.set(trade.officialName, {
+            name: trade.officialName,
+            title: trade.position,
+            party: null,
+            state: null,
+            district: null
+          });
+        }
       }
+      await upsertBulkOfficials([...officialMap.values()]);
 
       setMemoryCache(cacheKey, trades, ttl);
       return trades;
@@ -377,6 +446,99 @@ export async function updateOfficialPortrait(name, portraitUrl) {
   );
 }
 
+// Get chamber stats via SQL aggregation
+export async function getChamberStats(chamber) {
+  const titlePattern = chamber === 'senate' ? '%Senator%' : '%Representative%';
+
+  const statsResult = await query(
+    `SELECT
+       COUNT(*) as total_trades,
+       COUNT(*) FILTER (WHERE pt.transaction_type = 'BUY') as buy_count,
+       COUNT(*) FILTER (WHERE pt.transaction_type = 'SELL') as sell_count,
+       COUNT(DISTINCT pt.official_name) as unique_traders,
+       COUNT(DISTINCT pt.ticker) as unique_stocks
+     FROM political_trades pt
+     LEFT JOIN political_officials po ON pt.official_name = po.name
+     WHERE po.title LIKE $1 OR (po.title IS NULL AND $2 = 'house')`,
+    [titlePattern, chamber]
+  );
+
+  const topTradersResult = await query(
+    `SELECT pt.official_name as name, COUNT(*) as count
+     FROM political_trades pt
+     LEFT JOIN political_officials po ON pt.official_name = po.name
+     WHERE po.title LIKE $1 OR (po.title IS NULL AND $2 = 'house')
+     GROUP BY pt.official_name
+     ORDER BY count DESC
+     LIMIT 5`,
+    [titlePattern, chamber]
+  );
+
+  const topStocksResult = await query(
+    `SELECT pt.ticker, COUNT(*) as count
+     FROM political_trades pt
+     LEFT JOIN political_officials po ON pt.official_name = po.name
+     WHERE po.title LIKE $1 OR (po.title IS NULL AND $2 = 'house')
+     GROUP BY pt.ticker
+     ORDER BY count DESC
+     LIMIT 5`,
+    [titlePattern, chamber]
+  );
+
+  const stats = statsResult.rows[0];
+  return {
+    totalTrades: parseInt(stats.total_trades, 10) || 0,
+    buyCount: parseInt(stats.buy_count, 10) || 0,
+    sellCount: parseInt(stats.sell_count, 10) || 0,
+    uniqueTraders: parseInt(stats.unique_traders, 10) || 0,
+    uniqueStocks: parseInt(stats.unique_stocks, 10) || 0,
+    topTraders: topTradersResult.rows.map(r => ({ name: r.name, count: parseInt(r.count, 10) })),
+    topStocks: topStocksResult.rows.map(r => ({ ticker: r.ticker, count: parseInt(r.count, 10) }))
+  };
+}
+
+// Get official stats via SQL aggregation
+export async function getOfficialStats(officialName) {
+  const statsResult = await query(
+    `SELECT
+       COUNT(*) as total_trades,
+       COUNT(*) FILTER (WHERE transaction_type = 'BUY') as buy_count,
+       COUNT(*) FILTER (WHERE transaction_type = 'SELL') as sell_count,
+       COUNT(DISTINCT ticker) as unique_stocks,
+       MAX(transaction_date) as latest_trade,
+       AVG(EXTRACT(DAY FROM (reported_date::timestamp - transaction_date::timestamp)))
+         FILTER (WHERE reported_date IS NOT NULL AND transaction_date IS NOT NULL) as avg_reporting_delay
+     FROM political_trades
+     WHERE LOWER(official_name) = LOWER($1)`,
+    [officialName]
+  );
+
+  const topStocksResult = await query(
+    `SELECT ticker, COUNT(*) as count
+     FROM political_trades
+     WHERE LOWER(official_name) = LOWER($1)
+     GROUP BY ticker
+     ORDER BY count DESC
+     LIMIT 10`,
+    [officialName]
+  );
+
+  const stats = statsResult.rows[0];
+  if (!stats || parseInt(stats.total_trades, 10) === 0) {
+    return null;
+  }
+
+  return {
+    totalTrades: parseInt(stats.total_trades, 10),
+    buyCount: parseInt(stats.buy_count, 10),
+    sellCount: parseInt(stats.sell_count, 10),
+    uniqueStocks: parseInt(stats.unique_stocks, 10),
+    topStocks: topStocksResult.rows.map(r => ({ ticker: r.ticker, count: parseInt(r.count, 10) })),
+    avgReportingDelay: stats.avg_reporting_delay ? Math.round(parseFloat(stats.avg_reporting_delay)) : null,
+    latestTrade: stats.latest_trade || null
+  };
+}
+
 // Get trades for stocks in a user's watchlist
 export async function getWatchlistTrades(userId) {
   const result = await query(
@@ -450,12 +612,10 @@ export function clearCache(ticker = null) {
 
 // Get cache stats
 export function getCacheStats() {
-  let finnhubKeys = 0;
-  for (const key of memoryCache.keys()) {
-    if (key.startsWith('finnhub:')) finnhubKeys++;
-  }
   return {
-    memoryCacheSize: finnhubKeys,
+    memoryCacheSize: memoryCache.size,
+    memoryCacheMaxSize: memoryCache.max,
+    calculatedSize: memoryCache.calculatedSize,
     pendingRequests: pendingRequests.size
   };
 }
@@ -470,7 +630,10 @@ export default {
   refreshCommonTickers,
   clearCache,
   getCacheStats,
+  getChamberStats,
+  getOfficialStats,
   upsertOfficial,
+  upsertBulkOfficials,
   saveTradeToDB,
   saveBulkTrades
 };

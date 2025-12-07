@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { formatDate } from '$lib/utils/formatters';
 	import { getPortraitUrl, getCongressPortraitUrl } from '$lib/utils/urls';
+	import { getPartyAbbrev, getPartyClass, getInitials } from '$lib/utils/political';
 
 	interface Trade {
 		id: number;
@@ -20,37 +21,12 @@
 
 	let { trade }: { trade: Trade } = $props();
 
-	function getPartyClass(party?: string | null): string {
-		if (!party) return 'bg-gray-100 text-gray-700';
-		const p = party.toLowerCase();
-		if (p.includes('democrat')) return 'bg-blue-100 text-blue-800';
-		if (p.includes('republican')) return 'bg-red-100 text-red-800';
-		return 'bg-gray-100 text-gray-700';
-	}
-
-	function getPartyAbbrev(party?: string | null): string {
-		if (!party) return '?';
-		const p = party.toLowerCase();
-		if (p.includes('democrat')) return 'D';
-		if (p.includes('republican')) return 'R';
-		return party.charAt(0).toUpperCase();
-	}
-
 	function getReportingGapDays(): number | null {
 		if (!trade.transactionDate || !trade.reportedDate) return null;
 		const tx = new Date(trade.transactionDate);
 		const rpt = new Date(trade.reportedDate);
 		const diffTime = rpt.getTime() - tx.getTime();
 		return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-	}
-
-	function getInitials(name: string): string {
-		return name
-			.split(' ')
-			.map((n) => n.charAt(0))
-			.join('')
-			.toUpperCase()
-			.slice(0, 2);
 	}
 
 	function getLocalPortraitUrl(name: string, title?: string | null): string {
@@ -73,6 +49,8 @@
 				src={localPortrait}
 				alt={trade.officialName}
 				class="w-16 h-20 object-contain border border-ink-light bg-newsprint"
+				loading="lazy"
+				decoding="async"
 				onerror={() => portraitError = true}
 			/>
 		{:else}

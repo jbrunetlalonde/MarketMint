@@ -11,6 +11,7 @@
 		ColorType,
 		CrosshairMode
 	} from 'lightweight-charts';
+	import { themeStore } from '$lib/stores/theme.svelte';
 
 	interface IndicatorData {
 		time: string;
@@ -20,6 +21,35 @@
 		macdHistogram?: number | null;
 	}
 
+	// Theme color configurations
+	const lightColors = {
+		background: '#fafafa',
+		textColor: '#666666',
+		gridColor: '#f0f0f0',
+		gridColorAlt: '#e8e8e8',
+		borderColor: '#dddddd',
+		crosshairColor: '#999999',
+		labelBg: '#333333',
+		panelBorder: '#e0e0e0',
+		panelLabelBg: '#f5f5f5',
+		histogramUp: '#26a69a',
+		histogramDown: '#ef5350'
+	};
+
+	const darkColors = {
+		background: '#1e1e1e',
+		textColor: '#a0a0a0',
+		gridColor: '#2d2d2d',
+		gridColorAlt: '#333333',
+		borderColor: '#3d3d3d',
+		crosshairColor: '#666666',
+		labelBg: '#e8e8e0',
+		panelBorder: '#3d3d3d',
+		panelLabelBg: '#252525',
+		histogramUp: '#4ade80',
+		histogramDown: '#f87171'
+	};
+
 	interface Props {
 		data: IndicatorData[];
 		type: 'rsi' | 'macd';
@@ -27,6 +57,9 @@
 	}
 
 	let { data, type, height = 120 }: Props = $props();
+
+	// Get current theme colors
+	const getColors = () => themeStore.resolvedTheme === 'dark' ? darkColors : lightColors;
 
 	let chartContainer: HTMLDivElement;
 	let chart: IChartApi | null = null;
@@ -40,45 +73,57 @@
 	let histogramSeries: ISeriesApi<'Histogram'> | null = null;
 
 	function initChart() {
-		if (!chartContainer || chart) return;
+		if (!chartContainer) return;
+
+		// Destroy existing chart if any
+		if (chart) {
+			chart.remove();
+			chart = null;
+			rsiSeries = null;
+			macdLineSeries = null;
+			signalLineSeries = null;
+			histogramSeries = null;
+		}
+
+		const colors = getColors();
 
 		chart = createChart(chartContainer, {
 			width: chartContainer.clientWidth,
 			height: height,
 			layout: {
-				background: { type: ColorType.Solid, color: '#fafafa' },
-				textColor: '#666666',
+				background: { type: ColorType.Solid, color: colors.background },
+				textColor: colors.textColor,
 				fontFamily: "'IBM Plex Mono', monospace",
 				fontSize: 10
 			},
 			grid: {
-				vertLines: { color: '#f0f0f0' },
-				horzLines: { color: '#e8e8e8' }
+				vertLines: { color: colors.gridColor },
+				horzLines: { color: colors.gridColorAlt }
 			},
 			crosshair: {
 				mode: CrosshairMode.Normal,
 				vertLine: {
-					color: '#999999',
+					color: colors.crosshairColor,
 					width: 1,
 					style: 2,
 					labelVisible: false
 				},
 				horzLine: {
-					color: '#999999',
+					color: colors.crosshairColor,
 					width: 1,
 					style: 2,
-					labelBackgroundColor: '#333333'
+					labelBackgroundColor: colors.labelBg
 				}
 			},
 			rightPriceScale: {
-				borderColor: '#dddddd',
+				borderColor: colors.borderColor,
 				scaleMargins: {
 					top: 0.1,
 					bottom: 0.1
 				}
 			},
 			timeScale: {
-				borderColor: '#dddddd',
+				borderColor: colors.borderColor,
 				visible: false
 			},
 			handleScroll: false,
@@ -148,12 +193,13 @@
 			}
 
 			if (histogramSeries) {
+				const colors = getColors();
 				const histogramData: HistogramData[] = data
 					.filter((d) => d.macdHistogram != null)
 					.map((d) => ({
 						time: d.time,
 						value: d.macdHistogram!,
-						color: d.macdHistogram! >= 0 ? '#26a69a' : '#ef5350'
+						color: d.macdHistogram! >= 0 ? colors.histogramUp : colors.histogramDown
 					}));
 				histogramSeries.setData(histogramData);
 			}
@@ -181,9 +227,14 @@
 		}
 	});
 
+	// Track theme for reactivity
+	let currentTheme = $derived(themeStore.resolvedTheme);
+
 	$effect(() => {
-		if (data && chart) {
-			updateChartData();
+		// Re-initialize chart when data or theme changes
+		if (data && chartContainer) {
+			const _theme = currentTheme;
+			initChart();
 		}
 	});
 </script>
@@ -201,15 +252,15 @@
 
 <style>
 	.indicator-panel {
-		border-top: 1px solid #e0e0e0;
+		border-top: 1px solid var(--color-border);
 	}
 
 	.indicator-label {
 		font-family: 'IBM Plex Mono', monospace;
 		font-size: 10px;
-		color: #666666;
+		color: var(--color-ink-muted);
 		padding: 4px 8px;
-		background: #f5f5f5;
+		background: var(--color-newsprint-dark);
 	}
 
 	.chart-wrapper {

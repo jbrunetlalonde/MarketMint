@@ -13,6 +13,7 @@
 		ColorType,
 		CrosshairMode
 	} from 'lightweight-charts';
+	import { themeStore } from '$lib/stores/theme.svelte';
 
 	interface OHLCData {
 		time: string;
@@ -38,6 +39,31 @@
 		bollingerLower?: number | null;
 	}
 
+	// Theme color configurations
+	const lightColors = {
+		background: '#ffffff',
+		textColor: '#1a1a1a',
+		gridColor: '#f0f0f0',
+		borderColor: '#cccccc',
+		crosshairColor: '#666666',
+		upColor: '#0d7a3e',
+		downColor: '#c41e3a',
+		volumeUpColor: 'rgba(13, 122, 62, 0.3)',
+		volumeDownColor: 'rgba(196, 30, 58, 0.3)'
+	};
+
+	const darkColors = {
+		background: '#1e1e1e',
+		textColor: '#e8e8e0',
+		gridColor: '#3d3d3d',
+		borderColor: '#525252',
+		crosshairColor: '#a0a0a0',
+		upColor: '#4ade80',
+		downColor: '#f87171',
+		volumeUpColor: 'rgba(74, 222, 128, 0.3)',
+		volumeDownColor: 'rgba(248, 113, 113, 0.3)'
+	};
+
 	interface Props {
 		data: OHLCData[] | IndicatorData[];
 		height?: number;
@@ -45,8 +71,6 @@
 		showSMA?: boolean;
 		showEMA?: boolean;
 		showBollinger?: boolean;
-		upColor?: string;
-		downColor?: string;
 	}
 
 	let {
@@ -55,10 +79,11 @@
 		showVolume = true,
 		showSMA = false,
 		showEMA = false,
-		showBollinger = false,
-		upColor = '#0066cc',
-		downColor = '#cc0000'
+		showBollinger = false
 	}: Props = $props();
+
+	// Get current theme colors
+	const getColors = () => themeStore.resolvedTheme === 'dark' ? darkColors : lightColors;
 
 	let chartContainer: HTMLDivElement;
 	let chart: IChartApi | null = null;
@@ -98,42 +123,44 @@
 			return;
 		}
 
+		const colors = getColors();
+
 		chart = createChart(chartContainer, {
 			width: chartContainer.clientWidth,
 			height: height,
 			layout: {
-				background: { type: ColorType.Solid, color: '#ffffff' },
-				textColor: '#1a1a1a',
+				background: { type: ColorType.Solid, color: colors.background },
+				textColor: colors.textColor,
 				fontFamily: "'IBM Plex Mono', monospace"
 			},
 			grid: {
-				vertLines: { color: '#f0f0f0' },
-				horzLines: { color: '#f0f0f0' }
+				vertLines: { color: colors.gridColor },
+				horzLines: { color: colors.gridColor }
 			},
 			crosshair: {
 				mode: CrosshairMode.Normal,
 				vertLine: {
-					color: '#666666',
+					color: colors.crosshairColor,
 					width: 1,
 					style: 2,
-					labelBackgroundColor: '#1a1a1a'
+					labelBackgroundColor: colors.textColor
 				},
 				horzLine: {
-					color: '#666666',
+					color: colors.crosshairColor,
 					width: 1,
 					style: 2,
-					labelBackgroundColor: '#1a1a1a'
+					labelBackgroundColor: colors.textColor
 				}
 			},
 			rightPriceScale: {
-				borderColor: '#cccccc',
+				borderColor: colors.borderColor,
 				scaleMargins: {
 					top: 0.1,
 					bottom: showVolume ? 0.2 : 0.1
 				}
 			},
 			timeScale: {
-				borderColor: '#cccccc',
+				borderColor: colors.borderColor,
 				timeVisible: true,
 				secondsVisible: false
 			},
@@ -150,12 +177,12 @@
 
 		// Create candlestick series (v5 API)
 		candlestickSeries = chart.addSeries(CandlestickSeries, {
-			upColor: upColor,
-			downColor: downColor,
-			borderUpColor: upColor,
-			borderDownColor: downColor,
-			wickUpColor: upColor,
-			wickDownColor: downColor
+			upColor: colors.upColor,
+			downColor: colors.downColor,
+			borderUpColor: colors.upColor,
+			borderDownColor: colors.downColor,
+			wickUpColor: colors.upColor,
+			wickDownColor: colors.downColor
 		});
 
 		// Create volume series
@@ -246,10 +273,11 @@
 
 		// Format volume data
 		if (volumeSeries && showVolume) {
+			const colors = getColors();
 			const volumeData: HistogramData[] = data.map((d) => ({
 				time: d.time,
 				value: d.volume,
-				color: d.close >= d.open ? `${upColor}50` : `${downColor}50`
+				color: d.close >= d.open ? colors.volumeUpColor : colors.volumeDownColor
 			}));
 			volumeSeries.setData(volumeData);
 		}
@@ -336,9 +364,14 @@
 		}
 	});
 
+	// Track theme for reactivity
+	let currentTheme = $derived(themeStore.resolvedTheme);
+
 	$effect(() => {
-		// Re-initialize chart when data or indicator options change
+		// Re-initialize chart when data, indicator options, or theme change
 		if (data && data.length > 0 && chartContainer) {
+			// Access currentTheme to create reactive dependency
+			const _theme = currentTheme;
 			initChart();
 		}
 	});

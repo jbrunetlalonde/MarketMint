@@ -1070,6 +1070,99 @@ export function getCacheStats() {
   };
 }
 
+export async function getEarningsCalendar(from, to) {
+  const cacheKey = `fmp:earnings:${from}:${to}`;
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/earning_calendar?from=${from}&to=${to}`);
+
+      const formatted = (Array.isArray(data) ? data : []).map(item => ({
+        symbol: item.symbol,
+        date: item.date,
+        time: item.time || 'bmo', // bmo = before market open, amc = after market close
+        epsEstimate: item.epsEstimated,
+        revenue: item.revenue,
+        revenueEstimate: item.revenueEstimated
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error(`FMP earnings calendar error:`, err.message);
+      return [];
+    }
+  });
+}
+
+export async function getRevenueSegments(ticker, period = 'annual') {
+  const cacheKey = getCacheKey('segments', ticker, period);
+  const ttl = config.cacheTTL.financials;
+
+  const memCached = getFromMemoryCache(cacheKey);
+  if (memCached) return memCached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const endpoint = period === 'quarter'
+        ? `/revenue-product-segmentation?symbol=${ticker}&period=quarter`
+        : `/revenue-product-segmentation?symbol=${ticker}`;
+
+      const data = await fetchFMP(endpoint);
+
+      // Transform the data - FMP returns array of objects with date and product keys
+      const formatted = (Array.isArray(data) ? data : []).map(item => {
+        const { date, ...products } = item;
+        return {
+          date,
+          segments: Object.entries(products).map(([name, value]) => ({
+            name,
+            revenue: value
+          }))
+        };
+      });
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP revenue segments not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+export async function getInstitutionalHolders(ticker) {
+  const cacheKey = getCacheKey('institutional', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const memCached = getFromMemoryCache(cacheKey);
+  if (memCached) return memCached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/institutional-holder/${ticker}`);
+
+      const formatted = (Array.isArray(data) ? data : []).slice(0, 20).map(item => ({
+        holder: item.holder,
+        shares: item.shares,
+        dateReported: item.dateReported,
+        change: item.change,
+        changePercentage: item.changePercentage
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP institutional holders not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
 export async function searchSymbols(query, limit = 10) {
   const cacheKey = getCacheKey('search', query.toLowerCase());
   const ttl = 300; // 5 minute cache for search results
@@ -1079,13 +1172,20 @@ export async function searchSymbols(query, limit = 10) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      // Fetch more results to allow for sorting/filtering
-      const data = await fetchFMP(`/search-name?query=${encodeURIComponent(query)}&limit=${limit * 3}`);
+      // Use v3 API for search (stable API doesn't support search)
+      const url = `https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(query)}&limit=${limit * 3}&apikey=${config.fmpApiKey}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`FMP search API error: ${response.status}`);
+      }
+
+      const data = await response.json();
 
       const formatted = (Array.isArray(data) ? data : []).map(item => ({
         symbol: item.symbol,
         name: item.name,
-        exchange: item.exchangeFullName || item.exchange || 'N/A'
+        exchange: item.stockExchange || item.exchangeShortName || item.exchange || 'N/A'
       }));
 
       // Sort results to prioritize:
@@ -1152,6 +1252,9 @@ export default {
   getStockSplits,
   getPriceTarget,
   getStockPeers,
+  getRevenueSegments,
+  getInstitutionalHolders,
+  getEarningsCalendar,
   searchSymbols,
   bulkRefreshProfiles,
   bulkRefreshFinancials,
