@@ -546,21 +546,29 @@ router.get('/:ticker/institutional', async (req, res, next) => {
 /**
  * GET /api/financials/earnings/calendar
  * Get upcoming earnings calendar
+ * Supports: ?days=7 OR ?from=2025-01-01&to=2025-01-31
  */
 router.get('/earnings/calendar', async (req, res, next) => {
   try {
-    const { days = 7 } = req.query;
-    const numDays = Math.min(Math.max(parseInt(days) || 7, 1), 30);
+    let from, to;
 
-    const today = new Date();
-    const from = today.toISOString().split('T')[0];
-    const toDate = new Date(today);
-    toDate.setDate(toDate.getDate() + numDays);
-    const to = toDate.toISOString().split('T')[0];
+    // Support both date range params and days param
+    if (req.query.from && req.query.to) {
+      from = req.query.from;
+      to = req.query.to;
+    } else {
+      const days = req.query.days || 7;
+      const numDays = Math.min(Math.max(parseInt(days) || 7, 1), 90);
+      const today = new Date();
+      from = today.toISOString().split('T')[0];
+      const toDate = new Date(today);
+      toDate.setDate(toDate.getDate() + numDays);
+      to = toDate.toISOString().split('T')[0];
+    }
 
     try {
       const data = await fmp.getEarningsCalendar(from, to);
-      res.json({ success: true, data });
+      res.json({ success: true, data, meta: { from, to, count: data?.length || 0 } });
     } catch (err) {
       logger.warn('Earnings calendar fetch failed', { from, to, error: err.message });
       res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });

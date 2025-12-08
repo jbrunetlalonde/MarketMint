@@ -209,8 +209,15 @@ export const financialsApi = {
 			peers: string[];
 		}>(`/api/financials/${ticker}/full`, { token }),
 
-	getEarningsCalendar: (days = 7) =>
-		request<
+	getEarningsCalendar: (params: { days?: number; from?: string; to?: string } = {}) => {
+		const searchParams = new URLSearchParams();
+		if (params.from && params.to) {
+			searchParams.set('from', params.from);
+			searchParams.set('to', params.to);
+		} else {
+			searchParams.set('days', String(params.days || 7));
+		}
+		return request<
 			Array<{
 				symbol: string;
 				date: string;
@@ -218,8 +225,10 @@ export const financialsApi = {
 				epsEstimate: number | null;
 				revenue: number | null;
 				revenueEstimate: number | null;
-			}>
-		>(`/api/financials/earnings/calendar?days=${days}`),
+			}>,
+			{ from: string; to: string; count: number }
+		>(`/api/financials/earnings/calendar?${searchParams.toString()}`);
+	},
 
 	getEarningsHistory: (ticker: string, limit = 8, token?: string) =>
 		request<

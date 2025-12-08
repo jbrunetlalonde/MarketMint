@@ -134,13 +134,14 @@ export async function getHistoricalOHLC(ticker, period = '1y') {
   let interval = '1d';
 
   // Calculate date range based on period
+  // For 1d/5d: use 1 week of daily data as fallback when intraday unavailable
   switch (period) {
     case '1d':
-      startDate.setDate(startDate.getDate() - 1);
+      startDate.setDate(startDate.getDate() - 7); // Get 1 week for fallback
       interval = '5m';
       break;
     case '5d':
-      startDate.setDate(startDate.getDate() - 7); // Extra days for weekends
+      startDate.setDate(startDate.getDate() - 14); // Extra days for weekends
       interval = '15m';
       break;
     case '1m':
@@ -182,12 +183,17 @@ export async function getHistoricalOHLC(ticker, period = '1y') {
     return cached;
   }
 
-  // For intraday data, use FMP intraday endpoint
+  // For intraday data, try FMP intraday endpoint
+  // Note: FMP Starter plan may not include intraday, fall back to daily data
   if (interval !== '1d') {
     const data = await fmp.getOHLCV(ticker, period);
     const formatted = formatOHLCData(data || []);
-    setMemoryCache(cacheKey, formatted);
-    return formatted;
+    if (formatted.length > 0) {
+      setMemoryCache(cacheKey, formatted);
+      return formatted;
+    }
+    // Fall back to recent daily data if intraday not available
+    console.log(`[PriceHistory] No intraday data for ${ticker}, falling back to daily`);
   }
 
   // For daily data, use DB-first strategy
@@ -254,16 +260,34 @@ function isDataStale(lastDate) {
  * Format OHLC data for frontend consumption
  */
 function formatOHLCData(data) {
-  return data.map(d => ({
-    time: typeof d.date === 'string' ? d.date.split('T')[0] :
-          d.date instanceof Date ? d.date.toISOString().split('T')[0] :
-          new Date(d.date).toISOString().split('T')[0],
-    open: parseFloat(d.open) || 0,
-    high: parseFloat(d.high) || 0,
-    low: parseFloat(d.low) || 0,
-    close: parseFloat(d.close) || 0,
-    volume: parseInt(d.volume) || 0
-  })).filter(d => d.open > 0 && d.close > 0);
+  if (!Array.isArray(data) || data.length === 0) return [];
+
+  return data.map(d => {
+    // Handle various date formats safely
+    let time;
+    try {
+      if (typeof d.date === 'string') {
+        time = d.date.split('T')[0];
+      } else if (d.date instanceof Date && !isNaN(d.date.getTime())) {
+        time = d.date.toISOString().split('T')[0];
+      } else if (d.date && !isNaN(new Date(d.date).getTime())) {
+        time = new Date(d.date).toISOString().split('T')[0];
+      } else {
+        return null; // Skip invalid dates
+      }
+    } catch {
+      return null; // Skip on date parsing error
+    }
+
+    return {
+      time,
+      open: parseFloat(d.open) || 0,
+      high: parseFloat(d.high) || 0,
+      low: parseFloat(d.low) || 0,
+      close: parseFloat(d.close) || 0,
+      volume: parseInt(d.volume) || 0
+    };
+  }).filter(d => d && d.open > 0 && d.close > 0);
 }
 
 /**

@@ -5,28 +5,52 @@
 		formatCurrency,
 		formatPercent,
 		formatCompact,
-		getPriceClass
+		getPriceClass,
+		formatExecutiveName
 	} from '$lib/utils/formatters';
 	import { quotes } from '$lib/stores/quotes.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { getCompanyLogoUrl, getPortraitUrl, getCongressPortraitUrl, getAvatarFallback } from '$lib/utils/urls';
 	import api from '$lib/utils/api';
 
-	// Chart.js imports
-	import { Chart, registerables } from 'chart.js';
-	Chart.register(...registerables);
+	// ECharts components
+	import PriceChart from '$lib/components/PriceChart.svelte';
+	import FinancialBarChart from '$lib/components/FinancialBarChart.svelte';
+	import RatingRadarChart from '$lib/components/RatingRadarChart.svelte';
 
 	const symbol = $derived(page.params.symbol?.toUpperCase() || '');
 
 	let loading = $state(true);
 	let chartLoading = $state(false);
 	let error = $state<string | null>(null);
-	let selectedPeriod = $state('1y');
-	let financialPeriod = $state<'annual' | 'quarter'>('quarter');
+	let selectedPeriod = $state('1d');
+	let incomePeriod = $state<'annual' | 'quarter'>('quarter');
+	let balancePeriod = $state<'annual' | 'quarter'>('quarter');
+	let cashflowPeriod = $state<'annual' | 'quarter'>('quarter');
 	let activeFinancialTab = $state<'income' | 'balance' | 'cashflow'>('income');
 
-	// Quote data from store
-	const quoteData = $derived(quotes.getQuote(symbol));
+	// Quote data - local state for proper reactivity
+	let quoteData = $state<{
+		ticker: string;
+		price: number | null;
+		change: number | null;
+		changePercent: number | null;
+		volume: number | null;
+		marketCap: number | null;
+		name?: string;
+		dayHigh?: number | null;
+		dayLow?: number | null;
+		open?: number | null;
+		previousClose?: number | null;
+		avgVolume?: number | null;
+		peRatio?: number | null;
+		eps?: number | null;
+		fiftyTwoWeekHigh?: number | null;
+		fiftyTwoWeekLow?: number | null;
+		exchange?: string;
+		sharesOutstanding?: number | null;
+		dividendYield?: number | null;
+	} | null>(null);
 
 	// Profile/Financial data
 	let profile = $state<{
@@ -56,6 +80,13 @@
 
 	// Get CEO from executives
 	const ceo = $derived(executives.find(e => e.title?.toLowerCase().includes('ceo') || e.title?.toLowerCase().includes('chief executive')));
+
+	// Summarized description - extract first 1-2 sentences, no trailing dots
+	const summarizedDescription = $derived.by(() => {
+		if (!profile?.description) return '';
+		const sentences = profile.description.match(/[^.!?]*[.!?]/g) || [];
+		return sentences.slice(0, 2).join(' ').trim();
+	});
 
 	// Analyst data
 	let rating = $state<{
@@ -197,9 +228,50 @@
 	let inWatchlist = $state(false);
 	let watchlistLoading = $state(false);
 
-	// Chart canvas refs
-	let priceChartCanvas = $state<HTMLCanvasElement | null>(null);
-	let priceChart = $state<Chart | null>(null);
+	// Price chart data for LayerChart
+	const priceChartData = $derived.by(() => {
+		if (ohlcData.length === 0) return [];
+		return ohlcData.map((d, i) => ({
+			index: i,
+			date: d.time,
+			close: d.close,
+			label: (() => {
+				const date = new Date(d.time);
+				if (selectedPeriod === '1d') {
+					return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+				}
+				return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+			})()
+		}));
+	});
+
+	// Period-based change calculation (e.g., 6M shows 6-month performance)
+	const periodChange = $derived.by(() => {
+		if (ohlcData.length === 0 || !quoteData?.price) {
+			// Fall back to daily change
+			return {
+				change: quoteData?.change ?? 0,
+				changePercent: quoteData?.changePercent ?? 0,
+				isDaily: true
+			};
+		}
+		const firstPrice = ohlcData[0]?.close;
+		const currentPrice = quoteData.price;
+		if (!firstPrice || firstPrice === 0) {
+			return {
+				change: quoteData?.change ?? 0,
+				changePercent: quoteData?.changePercent ?? 0,
+				isDaily: true
+			};
+		}
+		const change = currentPrice - firstPrice;
+		const changePercent = ((currentPrice - firstPrice) / firstPrice) * 100;
+		return {
+			change,
+			changePercent,
+			isDaily: false
+		};
+	});
 
 	const periods = [
 		{ label: '1D', value: '1d' },
@@ -219,8 +291,11 @@
 		error = null;
 
 		try {
-			// Fetch quote
-			await quotes.fetchQuote(symbol);
+			// Fetch quote and store locally for proper reactivity
+			const fetchedQuote = await quotes.fetchQuote(symbol);
+			if (fetchedQuote) {
+				quoteData = fetchedQuote;
+			}
 			quotes.connect();
 			quotes.subscribe(symbol);
 
@@ -257,8 +332,8 @@
 			// Fetch OHLC price history
 			await loadOHLC(selectedPeriod);
 
-			// Load financial statements
-			await loadFinancials(financialPeriod);
+			// Load financial statements (initially all quarterly)
+			await loadFinancials('quarter');
 
 			// Fetch additional data in parallel
 			const [
@@ -321,8 +396,56 @@
 			if (cashflowRes.success && cashflowRes.data) {
 				cashflowData = cashflowRes.data;
 			}
+
+			// Charts temporarily disabled for debugging
+			// await tick();
+			// if (browser) {
+			// 	requestAnimationFrame(() => {
+			// 		renderIncomeChart();
+			// 		renderBalanceChart();
+			// 		renderCashflowChart();
+			// 	});
+			// }
 		} catch (err) {
 			console.error('Failed to load financials:', err);
+		} finally {
+			financialsLoading = false;
+		}
+	}
+
+	async function loadIncomeStatement(period: 'annual' | 'quarter') {
+		try {
+			const res = await api.getIncomeStatement(symbol, period, 5);
+			if (res.success && res.data) {
+				incomeData = res.data;
+				// Chart rendering disabled
+			}
+		} catch (err) {
+			console.error('Failed to load income statement:', err);
+		}
+	}
+
+	async function loadBalanceSheet(period: 'annual' | 'quarter') {
+		try {
+			const res = await api.getBalanceSheet(symbol, period, 5);
+			if (res.success && res.data) {
+				balanceData = res.data;
+				// Chart rendering disabled
+			}
+		} catch (err) {
+			console.error('Failed to load balance sheet:', err);
+		}
+	}
+
+	async function loadCashFlow(period: 'annual' | 'quarter') {
+		try {
+			const res = await api.getCashFlow(symbol, period, 5);
+			if (res.success && res.data) {
+				cashflowData = res.data;
+				// Chart rendering disabled
+			}
+		} catch (err) {
+			console.error('Failed to load cash flow:', err);
 		} finally {
 			financialsLoading = false;
 		}
@@ -357,7 +480,6 @@
 			const res = await api.getIndicators(symbol, { period });
 			if (res.success && res.data?.indicators) {
 				ohlcData = res.data.indicators;
-				updatePriceChart();
 			}
 		} catch (err) {
 			console.error('Failed to load OHLC data:', err);
@@ -366,90 +488,24 @@
 		}
 	}
 
-	function updatePriceChart() {
-		if (!priceChartCanvas || ohlcData.length === 0) return;
-
-		const ctx = priceChartCanvas.getContext('2d');
-		if (!ctx) return;
-
-		if (priceChart) {
-			priceChart.destroy();
-		}
-
-		const labels = ohlcData.map(d => {
-			const date = new Date(d.time);
-			if (selectedPeriod === '1d') {
-				return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-			}
-			return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-		});
-
-		const prices = ohlcData.map(d => d.close);
-
-		priceChart = new Chart(ctx, {
-			type: 'line',
-			data: {
-				labels,
-				datasets: [{
-					data: prices,
-					borderColor: '#d97706',
-					backgroundColor: 'rgba(217, 119, 6, 0.1)',
-					borderWidth: 2,
-					fill: true,
-					tension: 0.1,
-					pointRadius: 0,
-					pointHoverRadius: 4
-				}]
-			},
-			options: {
-				responsive: true,
-				maintainAspectRatio: false,
-				plugins: {
-					legend: { display: false },
-					tooltip: {
-						mode: 'index',
-						intersect: false,
-						callbacks: {
-							label: (ctx) => `$${ctx.parsed.y.toFixed(2)}`
-						}
-					}
-				},
-				scales: {
-					x: {
-						grid: { display: false },
-						ticks: {
-							font: { family: 'IBM Plex Mono', size: 10 },
-							color: '#666',
-							maxTicksLimit: 8
-						}
-					},
-					y: {
-						position: 'left',
-						grid: { color: 'rgba(0,0,0,0.05)' },
-						ticks: {
-							font: { family: 'IBM Plex Mono', size: 10 },
-							color: '#666',
-							callback: (value) => `$${value}`
-						}
-					}
-				},
-				interaction: {
-					mode: 'nearest',
-					axis: 'x',
-					intersect: false
-				}
-			}
-		});
-	}
-
 	function handlePeriodChange(period: string) {
 		selectedPeriod = period;
 		loadOHLC(period);
 	}
 
-	function handleFinancialPeriodChange(period: 'annual' | 'quarter') {
-		financialPeriod = period;
-		loadFinancials(period);
+	function handleIncomePeriodChange(period: 'annual' | 'quarter') {
+		incomePeriod = period;
+		loadIncomeStatement(period);
+	}
+
+	function handleBalancePeriodChange(period: 'annual' | 'quarter') {
+		balancePeriod = period;
+		loadBalanceSheet(period);
+	}
+
+	function handleCashflowPeriodChange(period: 'annual' | 'quarter') {
+		cashflowPeriod = period;
+		loadCashFlow(period);
 	}
 
 	async function checkWatchlist() {
@@ -492,21 +548,21 @@
 
 		return () => {
 			quotes.unsubscribe(symbol);
-			if (priceChart) priceChart.destroy();
 		};
 	});
 
-	// Update chart when canvas is ready
+	// Sync WebSocket updates to local quoteData state
 	$effect(() => {
-		if (priceChartCanvas && ohlcData.length > 0) {
-			updatePriceChart();
+		const wsQuote = quotes.quotes.get(symbol.toUpperCase());
+		if (wsQuote && wsQuote.price !== quoteData?.price) {
+			quoteData = wsQuote;
 		}
 	});
 
 	// Helper functions
 	function formatPeriodLabel(date: string, period: string): string {
 		const d = new Date(date);
-		if (financialPeriod === 'quarter') {
+		if (period === 'Q1' || period === 'Q2' || period === 'Q3' || period === 'Q4' || period?.toLowerCase().includes('q')) {
 			const q = Math.ceil((d.getMonth() + 1) / 3);
 			return `Q${q}-${d.getFullYear()}`;
 		}
@@ -557,6 +613,55 @@
 	// Senate and House congress trades
 	const senateTrades = $derived(congressTrades.filter(t => t.title?.toLowerCase().includes('senator')));
 	const houseTrades = $derived(congressTrades.filter(t => !t.title?.toLowerCase().includes('senator')));
+
+	// Chart data for LayerChart
+	const incomeChartData = $derived.by(() => {
+		if (incomeData.length === 0) return [];
+		return [...incomeData].reverse().map(d => {
+			const date = new Date(d.date);
+			const label = d.period?.includes('Q')
+				? `Q${Math.ceil((date.getMonth() + 1) / 3)}-${date.getFullYear().toString().slice(-2)}`
+				: date.getFullYear().toString();
+			return {
+				label,
+				revenue: (d.revenue || 0) / 1e9,
+				netIncome: (d.netIncome || 0) / 1e9
+			};
+		});
+	});
+
+	const cashflowChartData = $derived.by(() => {
+		if (cashflowData.length === 0) return [];
+		return [...cashflowData].reverse().map(d => {
+			const date = new Date(d.date);
+			const label = d.period?.includes('Q')
+				? `Q${Math.ceil((date.getMonth() + 1) / 3)}-${date.getFullYear().toString().slice(-2)}`
+				: date.getFullYear().toString();
+			return {
+				label,
+				operating: (d.operatingCashFlow || 0) / 1e9,
+				investing: (d.investingCashFlow || 0) / 1e9,
+				financing: (d.financingCashFlow || 0) / 1e9
+			};
+		});
+	});
+
+	// Balance sheet chart data (horizontal bar comparison)
+	const balanceChartData = $derived.by(() => {
+		if (balanceData.length === 0) return [];
+		return [...balanceData].reverse().map(d => {
+			const date = new Date(d.date);
+			const label = d.period?.includes('Q')
+				? `Q${Math.ceil((date.getMonth() + 1) / 3)}-${date.getFullYear().toString().slice(-2)}`
+				: date.getFullYear().toString();
+			return {
+				label,
+				assets: (d.totalAssets || 0) / 1e9,
+				liabilities: (d.totalLiabilities || 0) / 1e9,
+				equity: (d.totalEquity || 0) / 1e9
+			};
+		});
+	});
 </script>
 
 <svelte:head>
@@ -597,9 +702,9 @@
 						{#if quoteData}
 							<span class="price-inline">
 								{formatCurrency(quoteData.price ?? 0)}
-								<span class={getPriceClass(quoteData.changePercent ?? 0)}>
-									{(quoteData.changePercent ?? 0) >= 0 ? '^' : 'v'} {formatPercent(Math.abs(quoteData.changePercent ?? 0))}
-									({(quoteData.change ?? 0) >= 0 ? '+' : ''}{formatCurrency(quoteData.change ?? 0, 'USD', 2)})
+								<span class={getPriceClass(periodChange.changePercent)}>
+									{periodChange.changePercent >= 0 ? '^' : 'v'} {formatPercent(Math.abs(periodChange.changePercent))}
+									({periodChange.change >= 0 ? '+' : ''}{formatCurrency(periodChange.change, 'USD', 2)})
 								</span>
 							</span>
 						{/if}
@@ -630,9 +735,9 @@
 			<section class="chart-section">
 				{#if loading || chartLoading}
 					<div class="chart-loading"></div>
-				{:else if ohlcData.length > 0}
+				{:else if priceChartData.length > 0}
 					<div class="chart-container">
-						<canvas bind:this={priceChartCanvas}></canvas>
+						<PriceChart data={priceChartData} height={400} color="#f59e0b" />
 					</div>
 				{:else}
 					<div class="chart-empty">No historical data available</div>
@@ -646,13 +751,13 @@
 					<div class="period-toggle">
 						<button
 							class="toggle-btn"
-							class:active={financialPeriod === 'quarter'}
-							onclick={() => handleFinancialPeriodChange('quarter')}
+							class:active={incomePeriod === 'quarter'}
+							onclick={() => handleIncomePeriodChange('quarter')}
 						>Quarterly</button>
 						<button
 							class="toggle-btn"
-							class:active={financialPeriod === 'annual'}
-							onclick={() => handleFinancialPeriodChange('annual')}
+							class:active={incomePeriod === 'annual'}
+							onclick={() => handleIncomePeriodChange('annual')}
 						>Annually</button>
 					</div>
 				</div>
@@ -699,6 +804,21 @@
 							</tbody>
 						</table>
 					</div>
+					{#if incomeChartData.length > 0}
+						<div class="financial-chart">
+							<div class="chart-header">
+								<span class="chart-title">Revenue Trend</span>
+							</div>
+							<div class="chart-wrapper">
+								<FinancialBarChart
+									data={incomeChartData.map(d => ({ label: d.label, value: d.revenue }))}
+									height={180}
+									color="#059669"
+									formatValue={(v) => `$${v.toFixed(1)}B`}
+								/>
+							</div>
+						</div>
+					{/if}
 				{:else}
 					<p class="no-data">No income statement data available</p>
 				{/if}
@@ -709,8 +829,8 @@
 				<div class="section-header-row">
 					<h2>Balance Statement</h2>
 					<div class="period-toggle">
-						<button class="toggle-btn" class:active={financialPeriod === 'quarter'} onclick={() => handleFinancialPeriodChange('quarter')}>Quarterly</button>
-						<button class="toggle-btn" class:active={financialPeriod === 'annual'} onclick={() => handleFinancialPeriodChange('annual')}>Annually</button>
+						<button class="toggle-btn" class:active={balancePeriod === 'quarter'} onclick={() => handleBalancePeriodChange('quarter')}>Quarterly</button>
+						<button class="toggle-btn" class:active={balancePeriod === 'annual'} onclick={() => handleBalancePeriodChange('annual')}>Annually</button>
 					</div>
 				</div>
 
@@ -748,6 +868,21 @@
 							</tbody>
 						</table>
 					</div>
+					{#if balanceChartData.length > 0}
+						<div class="financial-chart">
+							<div class="chart-header">
+								<span class="chart-title">Total Assets</span>
+							</div>
+							<div class="chart-wrapper">
+								<FinancialBarChart
+									data={balanceChartData.map(d => ({ label: d.label, value: d.assets }))}
+									height={180}
+									color="#2563eb"
+									formatValue={(v) => `$${v.toFixed(1)}B`}
+								/>
+							</div>
+						</div>
+					{/if}
 				{:else}
 					<p class="no-data">No balance sheet data available</p>
 				{/if}
@@ -758,8 +893,8 @@
 				<div class="section-header-row">
 					<h2>Cash Flow Statement</h2>
 					<div class="period-toggle">
-						<button class="toggle-btn" class:active={financialPeriod === 'quarter'} onclick={() => handleFinancialPeriodChange('quarter')}>Quarterly</button>
-						<button class="toggle-btn" class:active={financialPeriod === 'annual'} onclick={() => handleFinancialPeriodChange('annual')}>Annually</button>
+						<button class="toggle-btn" class:active={cashflowPeriod === 'quarter'} onclick={() => handleCashflowPeriodChange('quarter')}>Quarterly</button>
+						<button class="toggle-btn" class:active={cashflowPeriod === 'annual'} onclick={() => handleCashflowPeriodChange('annual')}>Annually</button>
 					</div>
 				</div>
 
@@ -805,6 +940,21 @@
 							</tbody>
 						</table>
 					</div>
+					{#if cashflowChartData.length > 0}
+						<div class="financial-chart">
+							<div class="chart-header">
+								<span class="chart-title">Operating Cash Flow</span>
+							</div>
+							<div class="chart-wrapper">
+								<FinancialBarChart
+									data={cashflowChartData.map(d => ({ label: d.label, value: d.operating }))}
+									height={180}
+									color="#f59e0b"
+									formatValue={(v) => `$${v.toFixed(1)}B`}
+								/>
+							</div>
+						</div>
+					{/if}
 				{:else}
 					<p class="no-data">No cash flow data available</p>
 				{/if}
@@ -832,7 +982,7 @@
 				<section class="news-section">
 					<h2>NEWS</h2>
 					<div class="news-list">
-						{#each news.slice(0, 5) as article (article.url)}
+						{#each news.slice(0, 5) as article, i (article.url ?? `news-${i}`)}
 							<article class="news-item">
 								<time class="news-date">
 									{new Date(article.publishedDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} - {new Date(article.publishedDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} UTC
@@ -884,56 +1034,45 @@
 				</table>
 			</section>
 
-			<!-- About Section -->
+			<!-- About Section with CEO Portrait -->
 			<section class="about-section">
-				<h3>About {profile?.name || symbol}</h3>
-				{#if profile?.website}
-					<a href={profile.website} target="_blank" rel="noopener" class="website-link">
-						{profile.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-					</a>
-				{/if}
-				{#if profile?.description}
-					<p class="description">{profile.description.slice(0, 300)}{profile.description.length > 300 ? '...' : ''}</p>
-				{/if}
-			</section>
-
-			<!-- CEO Section -->
-			{#if ceo || profile?.ceo}
-				<section class="ceo-section">
-					<div class="ceo-portrait-container">
-						{#if ceoPortrait}
-							<img
-								src={ceoPortrait}
-								alt={ceo?.name || profile?.ceo}
-								class="ceo-portrait"
-								onerror={(e) => { e.currentTarget.src = getAvatarFallback(ceo?.name || profile?.ceo || 'CEO'); }}
-							/>
-						{:else}
-							<img
-								src={getAvatarFallback(ceo?.name || profile?.ceo || 'CEO')}
-								alt={ceo?.name || profile?.ceo}
-								class="ceo-portrait"
-							/>
-						{/if}
-					</div>
-					<div class="ceo-info">
-						<span class="ceo-title">CEO</span>
-						<span class="ceo-name">{ceo?.name || profile?.ceo}</span>
-						<a href="/ticker/{symbol}/insiders" class="view-insiders-btn">View Insider Trades</a>
-					</div>
-
-					{#if ceo?.pay}
-						<div class="compensation-section">
-							<h4>Compensation Summary</h4>
-							<table class="compensation-table">
-								<tbody>
-									<tr><td>Total Compensation</td><td>{formatCurrency(ceo.pay)}</td></tr>
-								</tbody>
-							</table>
+				<div class="about-header">
+					{#if ceo || profile?.ceo}
+						{@const ceoName = formatExecutiveName(ceo?.name || profile?.ceo)}
+						<div class="ceo-portrait-container">
+							{#if ceoPortrait}
+								<img
+									src={ceoPortrait}
+									alt={ceoName}
+									class="ceo-portrait"
+									onerror={(e) => { e.currentTarget.src = getAvatarFallback(ceoName || 'CEO'); }}
+								/>
+							{:else}
+								<img
+									src={getAvatarFallback(ceoName || 'CEO')}
+									alt={ceoName}
+									class="ceo-portrait"
+								/>
+							{/if}
+							<div class="ceo-label">
+								<span class="ceo-title">CEO</span>
+								<span class="ceo-name">{ceoName}</span>
+							</div>
 						</div>
 					{/if}
-				</section>
-			{/if}
+					<div class="about-content">
+						<h3>About {profile?.name || symbol}</h3>
+						{#if profile?.website}
+							<a href={profile.website} target="_blank" rel="noopener" class="website-link">
+								{profile.website.replace(/^https?:\/\//, '').replace(/\/$/, '')} ↗
+							</a>
+						{/if}
+						{#if summarizedDescription}
+							<p class="description">{summarizedDescription}</p>
+						{/if}
+					</div>
+				</div>
+			</section>
 
 			<!-- Company Info -->
 			<section class="company-info-section">
@@ -968,7 +1107,7 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each splits as split (split.date)}
+							{#each splits as split, i (split.date ?? `split-${i}`)}
 								<tr>
 									<td>{new Date(split.date).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>
 									<td class="split-type">Forward</td>
@@ -984,21 +1123,28 @@
 			{#if rating}
 				<section class="ratings-section">
 					<h3>Ratings Snapshot</h3>
-					<div class="rating-display">
-						<span class="rating-label">Rating:</span>
-						<span class="rating-value">{rating.rating}</span>
+					<div class="ratings-layout">
+						<div class="ratings-chart">
+							<RatingRadarChart {rating} height={180} />
+						</div>
+						<div class="ratings-info">
+							<div class="rating-display">
+								<span class="rating-label">Rating:</span>
+								<span class="rating-value">{rating.rating}</span>
+							</div>
+							<table class="ratings-detail-table">
+								<tbody>
+									<tr><td>DCF</td><td>{rating.ratingDetailsDCFScore ?? '-'}</td></tr>
+									<tr><td>ROE</td><td>{rating.ratingDetailsROEScore ?? '-'}</td></tr>
+									<tr><td>ROA</td><td>{rating.ratingDetailsROAScore ?? '-'}</td></tr>
+									<tr><td>D/E</td><td>{rating.ratingDetailsDEScore ?? '-'}</td></tr>
+									<tr><td>P/E</td><td>{rating.ratingDetailsPEScore ?? '-'}</td></tr>
+									<tr><td>P/B</td><td>{rating.ratingDetailsPBScore ?? '-'}</td></tr>
+									<tr class="overall"><td>Overall</td><td>{rating.ratingScore}</td></tr>
+								</tbody>
+							</table>
+						</div>
 					</div>
-					<table class="ratings-detail-table">
-						<tbody>
-							<tr><td>DCF</td><td>{rating.ratingDetailsDCFScore ?? '-'}</td></tr>
-							<tr><td>Return On Equity</td><td>{rating.ratingDetailsROEScore ?? '-'}</td></tr>
-							<tr><td>Return On Assets</td><td>{rating.ratingDetailsROAScore ?? '-'}</td></tr>
-							<tr><td>Debt To Equity</td><td>{rating.ratingDetailsDEScore ?? '-'}</td></tr>
-							<tr><td>Price To Earnings</td><td>{rating.ratingDetailsPEScore ?? '-'}</td></tr>
-							<tr><td>Price To Book</td><td>{rating.ratingDetailsPBScore ?? '-'}</td></tr>
-							<tr class="overall"><td>Overall Score</td><td>{rating.ratingScore}</td></tr>
-						</tbody>
-					</table>
 				</section>
 			{/if}
 
@@ -1008,7 +1154,7 @@
 					<h3>Most Recent Analyst Grades</h3>
 					<div class="analyst-content">
 						<div class="analyst-list">
-							{#each analystGrades.slice(0, 10) as grade (grade.publishedDate + grade.gradingCompany)}
+							{#each analystGrades.slice(0, 10) as grade, i (grade.publishedDate && grade.gradingCompany ? `${grade.publishedDate}-${grade.gradingCompany}` : `grade-${i}`)}
 								<div class="analyst-item">
 									<div class="analyst-logo">
 										<img
@@ -1058,7 +1204,7 @@
 					<h3>Institutional Ownership</h3>
 					<div class="institutional-content">
 						<div class="holders-list">
-							{#each institutionalHolders.slice(0, 10) as holder (holder.holder)}
+							{#each institutionalHolders.slice(0, 10) as holder, i (holder.holder ?? `holder-${i}`)}
 								<div class="holder-item">
 									<div class="holder-logo">
 										<img
@@ -1100,7 +1246,7 @@
 					<div class="congress-columns">
 						<div class="congress-column">
 							<h4>SENATE TRADES</h4>
-							{#each senateTrades.slice(0, 4) as trade (trade.id)}
+							{#each senateTrades.slice(0, 4) as trade, i (trade.id ?? `senate-${i}`)}
 								<a href="/political/member/{encodeURIComponent(trade.officialName)}" class="congress-trade-item">
 									<img
 										src={getCongressPortrait(trade.officialName, trade.title)}
@@ -1120,7 +1266,7 @@
 						</div>
 						<div class="congress-column">
 							<h4>HOUSE TRADES</h4>
-							{#each houseTrades.slice(0, 4) as trade (trade.id)}
+							{#each houseTrades.slice(0, 4) as trade, i (trade.id ?? `house-${i}`)}
 								<a href="/political/member/{encodeURIComponent(trade.officialName)}" class="congress-trade-item">
 									<img
 										src={getCongressPortrait(trade.officialName, trade.title)}
@@ -1156,7 +1302,7 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each peers.slice(0, 10) as peer (peer)}
+							{#each peers.slice(0, 10) as peer, i (peer ?? `peer-${i}`)}
 								{@const peerData = peerQuotes[peer]}
 								<tr>
 									<td class="peer-cell">
@@ -1275,7 +1421,15 @@
 	}
 
 	.price-inline {
-		font-weight: 600;
+		font-size: 1.25rem;
+		font-weight: 700;
+		margin-left: 1rem;
+		color: var(--color-ink);
+	}
+
+	.price-inline span {
+		font-size: 0.875rem;
+		font-weight: 500;
 		margin-left: 0.5rem;
 	}
 
@@ -1332,23 +1486,23 @@
 	/* Chart Section */
 	.chart-section {
 		border: 1px solid var(--color-border);
-		padding: 1rem;
+		padding: 1.5rem;
 		background: var(--color-paper);
 	}
 
 	.chart-container {
-		height: 300px;
+		height: 400px;
 		position: relative;
 	}
 
 	.chart-loading {
-		height: 300px;
+		height: 400px;
 		background: var(--color-newsprint-dark);
 		animation: pulse 1.5s infinite;
 	}
 
 	.chart-empty {
-		height: 300px;
+		height: 400px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -1436,6 +1590,33 @@
 		padding: 2rem;
 		text-align: center;
 	}
+
+	/* Financial Charts */
+	.financial-chart {
+		margin-top: 1.5rem;
+		border: 1px solid var(--color-border);
+		background: var(--color-paper);
+	}
+
+	.chart-header {
+		padding: 0.75rem 1rem;
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-newsprint);
+	}
+
+	.chart-title {
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-ink-light);
+	}
+
+	.chart-wrapper {
+		height: 180px;
+		padding: 0.5rem;
+	}
+
 
 	/* Segments */
 	.segments-grid {
@@ -1550,56 +1731,86 @@
 		font-weight: 600;
 	}
 
-	/* About Section */
-	.about-section .website-link {
-		display: block;
-		font-size: 0.75rem;
-		color: var(--color-gain);
-		text-decoration: none;
-		margin-bottom: 0.75rem;
+	/* About Section with CEO Portrait */
+	.about-section {
+		padding: 1rem;
+		border: 1px solid var(--color-border);
+		background: var(--color-paper);
+		margin-bottom: 1rem;
 	}
 
-	.about-section .description {
-		font-size: 0.8125rem;
-		line-height: 1.5;
-		color: var(--color-ink-muted);
-		margin: 0;
-	}
-
-	/* CEO Section */
-	.ceo-section {
+	.about-header {
 		display: flex;
-		flex-direction: column;
 		gap: 1rem;
+		align-items: flex-start;
 	}
 
 	.ceo-portrait-container {
-		width: 120px;
-		height: 140px;
-		border: 1px solid var(--color-border);
-		overflow: hidden;
+		flex-shrink: 0;
+		width: 100px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
 	}
 
 	.ceo-portrait {
 		width: 100%;
-		height: 100%;
+		aspect-ratio: 3/4;
 		object-fit: cover;
+		border: 1px solid var(--color-border);
+		background: var(--color-bg);
 	}
 
-	.ceo-info {
+	.ceo-label {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		margin-top: 0.5rem;
+		gap: 0.125rem;
 	}
 
 	.ceo-title {
-		font-size: 0.75rem;
+		font-size: 0.625rem;
 		font-weight: 700;
 		text-transform: uppercase;
+		color: var(--color-ink-muted);
+		letter-spacing: 0.05em;
 	}
 
 	.ceo-name {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-ink);
+	}
+
+	.about-content {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.about-content h3 {
 		font-size: 0.875rem;
+		font-weight: 700;
+		margin: 0 0 0.5rem 0;
+	}
+
+	.about-section .website-link {
+		display: inline-block;
+		font-size: 0.75rem;
+		color: var(--color-gain);
+		text-decoration: none;
+		margin-bottom: 0.5rem;
+	}
+
+	.about-section .website-link:hover {
+		text-decoration: underline;
+	}
+
+	.about-section .description {
+		font-size: 0.8125rem;
+		line-height: 1.6;
+		color: var(--color-ink-muted);
+		margin: 0;
 	}
 
 	.view-insiders-btn {
@@ -1679,8 +1890,23 @@
 	}
 
 	/* Ratings */
+	.ratings-layout {
+		display: grid;
+		grid-template-columns: 180px 1fr;
+		gap: 1rem;
+		align-items: start;
+	}
+
+	.ratings-chart {
+		min-width: 0;
+	}
+
+	.ratings-info {
+		min-width: 0;
+	}
+
 	.rating-display {
-		margin-bottom: 1rem;
+		margin-bottom: 0.75rem;
 	}
 
 	.rating-label {

@@ -2,10 +2,11 @@
  * Format a number as currency
  */
 export function formatCurrency(
-	value: number,
+	value: number | null | undefined,
 	currency = 'USD',
 	minimumFractionDigits = 2
 ): string {
+	if (value == null) return '--';
 	return new Intl.NumberFormat('en-US', {
 		style: 'currency',
 		currency,
@@ -17,7 +18,8 @@ export function formatCurrency(
 /**
  * Format a number with commas
  */
-export function formatNumber(value: number, decimals = 0): string {
+export function formatNumber(value: number | null | undefined, decimals = 0): string {
+	if (value == null) return '--';
 	return new Intl.NumberFormat('en-US', {
 		minimumFractionDigits: decimals,
 		maximumFractionDigits: decimals
@@ -27,7 +29,8 @@ export function formatNumber(value: number, decimals = 0): string {
 /**
  * Format a large number with abbreviations (K, M, B, T)
  */
-export function formatCompact(value: number): string {
+export function formatCompact(value: number | null | undefined): string {
+	if (value == null) return '--';
 	if (value >= 1_000_000_000_000) {
 		return `${(value / 1_000_000_000_000).toFixed(2)}T`;
 	}
@@ -46,7 +49,8 @@ export function formatCompact(value: number): string {
 /**
  * Format a percentage
  */
-export function formatPercent(value: number, decimals = 2): string {
+export function formatPercent(value: number | null | undefined, decimals = 2): string {
+	if (value == null) return '--';
 	const sign = value >= 0 ? '+' : '';
 	return `${sign}${value.toFixed(decimals)}%`;
 }
@@ -110,7 +114,8 @@ export function isValidTicker(ticker: string): boolean {
 /**
  * Get price change class
  */
-export function getPriceClass(value: number): string {
+export function getPriceClass(value: number | null | undefined): string {
+	if (value == null) return 'price-neutral';
 	if (value > 0) return 'price-positive';
 	if (value < 0) return 'price-negative';
 	return 'price-neutral';
@@ -119,7 +124,8 @@ export function getPriceClass(value: number): string {
 /**
  * Format market cap with abbreviations
  */
-export function formatMarketCap(value: number): string {
+export function formatMarketCap(value: number | null | undefined): string {
+	if (value == null) return '--';
 	if (value >= 1_000_000_000_000) {
 		return `$${(value / 1_000_000_000_000).toFixed(2)}T`;
 	}
@@ -133,4 +139,27 @@ export function formatMarketCap(value: number): string {
 		return `$${(value / 1_000).toFixed(0)}K`;
 	}
 	return `$${value.toFixed(0)}`;
+}
+
+/**
+ * Format CEO/executive name by removing titles and middle initials
+ * "Mr. Elon R. Musk" -> "Elon Musk"
+ * "Ms. Mary T. Barra" -> "Mary Barra"
+ */
+export function formatExecutiveName(name: string | null | undefined): string {
+	if (!name) return '';
+
+	// Remove common titles
+	let cleaned = name
+		.replace(/^(Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.|Sir|Dame)\s+/i, '')
+		.trim();
+
+	// Split into parts and remove middle initials (single letters followed by period)
+	const parts = cleaned.split(/\s+/);
+	const filtered = parts.filter(part => {
+		// Keep if not a single letter or single letter with period
+		return !(part.length === 1 || (part.length === 2 && part.endsWith('.')));
+	});
+
+	return filtered.join(' ');
 }

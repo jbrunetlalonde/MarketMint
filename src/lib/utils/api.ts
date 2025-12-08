@@ -57,7 +57,7 @@ export const api = {
 	getDividends: financialsApi.getDividends,
 	getSplits: financialsApi.getSplits,
 	getFullFinancials: financialsApi.getFullFinancials,
-	getEarningsCalendar: financialsApi.getEarningsCalendar,
+	getEarningsCalendar: financialsApi.getEarningsCalendar as (params?: { days?: number; from?: string; to?: string }) => ReturnType<typeof financialsApi.getEarningsCalendar>,
 	getEarningsHistory: financialsApi.getEarningsHistory,
 	getSecFilings: financialsApi.getSecFilings,
 	getAnalystGrades: financialsApi.getAnalystGrades,

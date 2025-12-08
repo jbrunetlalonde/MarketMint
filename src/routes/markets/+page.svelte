@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatCurrency, formatPercent, formatCompact, getPriceClass } from '$lib/utils/formatters';
-	import { formatRelativeTime } from '$lib/utils/urls';
+	import { formatRelativeTime, getCompanyLogoUrl } from '$lib/utils/urls';
 	import { quotes } from '$lib/stores/quotes.svelte';
 	import PriceCard from '$lib/components/PriceCard.svelte';
 	import ErrorCard from '$lib/components/ErrorCard.svelte';
@@ -90,9 +90,9 @@
 		});
 	}
 
-	const sortedGainers = $derived(sortStocks(topGainers as any[], gainerSort.column, gainerSort.direction));
-	const sortedLosers = $derived(sortStocks(topLosers as any[], loserSort.column, loserSort.direction));
-	const sortedActive = $derived(sortStocks(mostActive as any[], activeSort.column, activeSort.direction));
+	const sortedGainers = $derived(sortStocks(topGainers.filter(s => s?.ticker) as any[], gainerSort.column, gainerSort.direction));
+	const sortedLosers = $derived(sortStocks(topLosers.filter(s => s?.ticker) as any[], loserSort.column, loserSort.direction));
+	const sortedActive = $derived(sortStocks(mostActive.filter(s => s?.ticker) as any[], activeSort.column, activeSort.direction));
 
 	function toggleSort(
 		current: { column: SortColumn; direction: SortDirection },
@@ -254,23 +254,33 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each sortedGainers as stock (stock?.ticker)}
-								{#if stock}
-									<tr>
-										<td>
-											<a href="/ticker/{stock.ticker}" class="ticker-symbol text-sm">
-												{stock.ticker}
-											</a>
-											{#if stock.name}
-												<div class="text-xs text-ink-muted">{stock.name}</div>
-											{/if}
-										</td>
-										<td>{stock.price !== null ? formatCurrency(stock.price) : '--'}</td>
-										<td class="price-positive font-semibold">
-											{stock.changePercent !== null ? formatPercent(stock.changePercent) : '--'}
-										</td>
-									</tr>
-								{/if}
+							{#each sortedGainers as stock, i (stock.ticker ?? `gainer-${i}`)}
+								<tr>
+									<td>
+										<a href="/ticker/{stock.ticker}" class="stock-cell">
+											<img
+												src={getCompanyLogoUrl(stock.ticker)}
+												alt=""
+												class="stock-logo"
+												loading="lazy"
+												onerror={(e) => {
+													const img = e.currentTarget as HTMLImageElement;
+													img.style.display = 'none';
+												}}
+											/>
+											<div class="stock-info">
+												<span class="ticker-symbol">{stock.ticker}</span>
+												{#if stock.name}
+													<span class="company-name">{stock.name}</span>
+												{/if}
+											</div>
+										</a>
+									</td>
+									<td>{formatCurrency(stock.price)}</td>
+									<td class="price-positive font-semibold">
+										{formatPercent(stock.changePercent)}
+									</td>
+								</tr>
 							{/each}
 							{#if sortedGainers.length === 0}
 								<tr><td colspan="3" class="text-ink-muted">No data</td></tr>
@@ -305,23 +315,33 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each sortedLosers as stock (stock?.ticker)}
-								{#if stock}
-									<tr>
-										<td>
-											<a href="/ticker/{stock.ticker}" class="ticker-symbol text-sm">
-												{stock.ticker}
-											</a>
-											{#if stock.name}
-												<div class="text-xs text-ink-muted">{stock.name}</div>
-											{/if}
-										</td>
-										<td>{stock.price !== null ? formatCurrency(stock.price) : '--'}</td>
-										<td class="price-negative font-semibold">
-											{stock.changePercent !== null ? formatPercent(stock.changePercent) : '--'}
-										</td>
-									</tr>
-								{/if}
+							{#each sortedLosers as stock, i (stock.ticker ?? `loser-${i}`)}
+								<tr>
+									<td>
+										<a href="/ticker/{stock.ticker}" class="stock-cell">
+											<img
+												src={getCompanyLogoUrl(stock.ticker)}
+												alt=""
+												class="stock-logo"
+												loading="lazy"
+												onerror={(e) => {
+													const img = e.currentTarget as HTMLImageElement;
+													img.style.display = 'none';
+												}}
+											/>
+											<div class="stock-info">
+												<span class="ticker-symbol">{stock.ticker}</span>
+												{#if stock.name}
+													<span class="company-name">{stock.name}</span>
+												{/if}
+											</div>
+										</a>
+									</td>
+									<td>{formatCurrency(stock.price)}</td>
+									<td class="price-negative font-semibold">
+										{formatPercent(stock.changePercent)}
+									</td>
+								</tr>
 							{/each}
 							{#if sortedLosers.length === 0}
 								<tr><td colspan="3" class="text-ink-muted">No data</td></tr>
@@ -360,24 +380,34 @@
 						</tr>
 					</thead>
 					<tbody>
-						{#each sortedActive as stock (stock?.ticker)}
-							{#if stock}
-								<tr>
-									<td>
-										<a href="/ticker/{stock.ticker}" class="ticker-symbol text-sm">
-											{stock.ticker}
-										</a>
-										{#if stock.name}
-											<div class="text-xs text-ink-muted">{stock.name}</div>
-										{/if}
-									</td>
-									<td>{stock.price !== null ? formatCurrency(stock.price) : '--'}</td>
-									<td class={getPriceClass(stock.changePercent ?? 0)}>
-										{stock.changePercent !== null ? formatPercent(stock.changePercent) : '--'}
-									</td>
-									<td>{stock.volume ? formatCompact(stock.volume) : '--'}</td>
-								</tr>
-							{/if}
+						{#each sortedActive as stock, i (stock.ticker ?? `active-${i}`)}
+							<tr>
+								<td>
+									<a href="/ticker/{stock.ticker}" class="stock-cell">
+										<img
+											src={getCompanyLogoUrl(stock.ticker)}
+											alt=""
+											class="stock-logo"
+											loading="lazy"
+											onerror={(e) => {
+												const img = e.currentTarget as HTMLImageElement;
+												img.style.display = 'none';
+											}}
+										/>
+										<div class="stock-info">
+											<span class="ticker-symbol">{stock.ticker}</span>
+											{#if stock.name}
+												<span class="company-name">{stock.name}</span>
+											{/if}
+										</div>
+									</a>
+								</td>
+								<td>{formatCurrency(stock.price)}</td>
+								<td class={getPriceClass(stock.changePercent)}>
+									{formatPercent(stock.changePercent)}
+								</td>
+								<td>{formatCompact(stock.volume)}</td>
+							</tr>
 						{/each}
 						{#if sortedActive.length === 0}
 							<tr><td colspan="4" class="text-ink-muted">No data</td></tr>
@@ -437,5 +467,46 @@
 
 	.sortable-table th.sortable:hover {
 		background-color: var(--color-newsprint);
+	}
+
+	.stock-cell {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		text-decoration: none;
+		color: inherit;
+	}
+
+	.stock-logo {
+		width: 28px;
+		height: 28px;
+		object-fit: contain;
+		border-radius: 4px;
+		flex-shrink: 0;
+		background: var(--color-paper);
+	}
+
+	.stock-info {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-width: 0;
+	}
+
+	.stock-info .ticker-symbol {
+		font-family: var(--font-mono);
+		font-size: 0.875rem;
+		font-weight: 700;
+		color: var(--color-ink);
+	}
+
+	.stock-info .company-name {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		color: var(--color-ink-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 140px;
 	}
 </style>

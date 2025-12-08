@@ -226,13 +226,15 @@ export async function getQuote(ticker) {
         open: quote.open,
         previousClose: quote.previousClose,
         volume: quote.volume,
-        avgVolume: null,
+        avgVolume: quote.avgVolume || null,
         marketCap: quote.marketCap,
-        peRatio: null,
-        eps: null,
+        peRatio: quote.pe || null,
+        eps: quote.eps || null,
         fiftyTwoWeekHigh: quote.yearHigh,
         fiftyTwoWeekLow: quote.yearLow,
-        exchange: quote.exchange
+        exchange: quote.exchange,
+        sharesOutstanding: quote.sharesOutstanding || null,
+        dividendYield: quote.dividendYield || null
       };
 
       setMemoryCache(cacheKey, formatted, ttl);
@@ -555,6 +557,15 @@ async function getRatingFromDB(ticker) {
   );
   if (result.rows.length > 0) {
     const row = result.rows[0];
+    // If we have JSON data column with detailed scores, use it
+    if (row.data) {
+      try {
+        return typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+      } catch {
+        // Fall back to basic fields
+      }
+    }
+    // Fall back to basic fields (legacy cache entries)
     return {
       ticker: row.ticker,
       date: row.rating_date,
@@ -568,16 +579,31 @@ async function getRatingFromDB(ticker) {
 
 async function saveRatingToDB(ticker, rating, ttlSeconds) {
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
-  await query(
-    `INSERT INTO fmp_rating_cache
-       (ticker, rating, rating_score, rating_recommendation, rating_date, fetched_at, cache_expires_at)
-     VALUES ($1, $2, $3, $4, $5, NOW(), $6)
-     ON CONFLICT (ticker) DO UPDATE SET
-       rating = EXCLUDED.rating, rating_score = EXCLUDED.rating_score,
-       rating_recommendation = EXCLUDED.rating_recommendation, rating_date = EXCLUDED.rating_date,
-       fetched_at = NOW(), cache_expires_at = EXCLUDED.cache_expires_at`,
-    [ticker, rating.rating, rating.ratingScore, rating.ratingRecommendation, rating.date, expiresAt]
-  );
+  try {
+    // Try to store full rating data as JSON for detailed scores (if data column exists)
+    await query(
+      `INSERT INTO fmp_rating_cache
+         (ticker, rating, rating_score, rating_recommendation, rating_date, data, fetched_at, cache_expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
+       ON CONFLICT (ticker) DO UPDATE SET
+         rating = EXCLUDED.rating, rating_score = EXCLUDED.rating_score,
+         rating_recommendation = EXCLUDED.rating_recommendation, rating_date = EXCLUDED.rating_date,
+         data = EXCLUDED.data, fetched_at = NOW(), cache_expires_at = EXCLUDED.cache_expires_at`,
+      [ticker, rating.rating, rating.ratingScore, rating.ratingRecommendation, rating.date, JSON.stringify(rating), expiresAt]
+    );
+  } catch (err) {
+    // Fall back to basic columns if data column doesn't exist
+    await query(
+      `INSERT INTO fmp_rating_cache
+         (ticker, rating, rating_score, rating_recommendation, rating_date, fetched_at, cache_expires_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+       ON CONFLICT (ticker) DO UPDATE SET
+         rating = EXCLUDED.rating, rating_score = EXCLUDED.rating_score,
+         rating_recommendation = EXCLUDED.rating_recommendation, rating_date = EXCLUDED.rating_date,
+         fetched_at = NOW(), cache_expires_at = EXCLUDED.cache_expires_at`,
+      [ticker, rating.rating, rating.ratingScore, rating.ratingRecommendation, rating.date, expiresAt]
+    );
+  }
 }
 
 export async function getRating(ticker) {
@@ -595,28 +621,23 @@ export async function getRating(ticker) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFMP(`/ratios?symbol=${ticker}&limit=1`);
-      const ratio = Array.isArray(data) ? data[0] : data;
-
-      let score = 3;
-      const peRatio = ratio.priceToEarningsRatio;
-      const pbRatio = ratio.priceToBookRatio;
-      const roe = ratio.returnOnEquity;
-
-      if (peRatio && peRatio < 15) score += 0.5;
-      if (peRatio && peRatio < 10) score += 0.5;
-      if (pbRatio && pbRatio < 3) score += 0.5;
-      if (roe && roe > 0.15) score += 0.5;
-
-      const ratings = ['Strong Sell', 'Sell', 'Hold', 'Buy', 'Strong Buy'];
-      const ratingIndex = Math.min(4, Math.max(0, Math.round(score) - 1));
+      // Use FMP's /ratings-snapshot endpoint to get detailed scores
+      const data = await fetchFMP(`/ratings-snapshot?symbol=${ticker}`);
+      const rating = Array.isArray(data) ? data[0] : data;
 
       const formatted = {
         ticker,
-        date: ratio.date,
-        rating: ratings[ratingIndex],
-        ratingScore: Math.round(score),
-        ratingRecommendation: ratings[ratingIndex]
+        date: new Date().toISOString(),
+        rating: rating.rating,
+        ratingScore: rating.overallScore,
+        ratingRecommendation: rating.rating,
+        // Map FMP field names to our expected format
+        ratingDetailsDCFScore: rating.discountedCashFlowScore,
+        ratingDetailsROEScore: rating.returnOnEquityScore,
+        ratingDetailsROAScore: rating.returnOnAssetsScore,
+        ratingDetailsDEScore: rating.debtToEquityScore,
+        ratingDetailsPEScore: rating.priceToEarningsScore,
+        ratingDetailsPBScore: rating.priceToBookScore
       };
 
       await saveRatingToDB(ticker, formatted, ttl);
@@ -1724,8 +1745,8 @@ export async function getSectorPerformance() {
 
 // Batch quotes for multiple tickers
 export async function getBatchQuotes(tickers) {
-  const symbols = Array.isArray(tickers) ? tickers.join(',') : tickers;
-  const cacheKey = `fmp:batchQuotes:${symbols}`;
+  const tickerList = Array.isArray(tickers) ? tickers : tickers.split(',');
+  const cacheKey = `fmp:batchQuotes:${tickerList.join(',')}`;
   const ttl = config.cacheTTL.quote;
 
   const cached = getFromMemoryCache(cacheKey);
@@ -1733,28 +1754,14 @@ export async function getBatchQuotes(tickers) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFMP(`/quote?symbol=${symbols}`);
-      const quotes = Array.isArray(data) ? data : [data];
+      // Fetch quotes in parallel (batch endpoint requires paid plan)
+      const results = await Promise.allSettled(
+        tickerList.map(ticker => getQuote(ticker))
+      );
 
-      const formatted = quotes.map(quote => ({
-        ticker: quote.symbol,
-        name: quote.name,
-        price: quote.price,
-        change: quote.change,
-        changePercent: quote.changePercentage,
-        dayHigh: quote.dayHigh,
-        dayLow: quote.dayLow,
-        open: quote.open,
-        previousClose: quote.previousClose,
-        volume: quote.volume,
-        avgVolume: null,
-        marketCap: quote.marketCap,
-        peRatio: null,
-        eps: null,
-        fiftyTwoWeekHigh: quote.yearHigh,
-        fiftyTwoWeekLow: quote.yearLow,
-        exchange: quote.exchange
-      }));
+      const formatted = results
+        .filter(r => r.status === 'fulfilled' && r.value)
+        .map(r => r.value);
 
       setMemoryCache(cacheKey, formatted, ttl);
       return formatted;

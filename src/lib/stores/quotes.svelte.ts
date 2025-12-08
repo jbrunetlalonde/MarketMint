@@ -12,7 +12,16 @@ interface Quote {
 	name?: string;
 	dayHigh?: number | null;
 	dayLow?: number | null;
+	open?: number | null;
 	previousClose?: number | null;
+	avgVolume?: number | null;
+	peRatio?: number | null;
+	eps?: number | null;
+	fiftyTwoWeekHigh?: number | null;
+	fiftyTwoWeekLow?: number | null;
+	exchange?: string;
+	sharesOutstanding?: number | null;
+	dividendYield?: number | null;
 	lastUpdated?: string;
 	isMock?: boolean;
 }
@@ -104,18 +113,20 @@ function createQuotesStore() {
 		switch (data.type) {
 			case 'quote':
 			case 'quote_update':
-				if (data.data) {
-					state.quotes.set(data.data.ticker, data.data);
+				if (data.data && data.data.ticker) {
+					// Normalize ticker to uppercase
+					const normalizedTicker = data.data.ticker.toUpperCase();
+					state.quotes.set(normalizedTicker, { ...data.data, ticker: normalizedTicker });
 				}
 				break;
 			case 'subscribed':
 				if (data.ticker) {
-					state.subscriptions.add(data.ticker);
+					state.subscriptions.add(data.ticker.toUpperCase());
 				}
 				break;
 			case 'unsubscribed':
 				if (data.ticker) {
-					state.subscriptions.delete(data.ticker);
+					state.subscriptions.delete(data.ticker.toUpperCase());
 				}
 				break;
 			case 'error':
@@ -192,10 +203,16 @@ function createQuotesStore() {
 		async fetchQuote(ticker: string): Promise<Quote | null> {
 			try {
 				const response = await api.getQuote(ticker);
+				console.log('[QuoteStore] fetchQuote response:', ticker, response);
 				if (response.success && response.data) {
 					const quote = response.data as Quote;
-					state.quotes.set(quote.ticker, quote);
+					// Normalize ticker to uppercase to match retrieval
+					const normalizedTicker = (quote.ticker || ticker).toUpperCase();
+					state.quotes.set(normalizedTicker, { ...quote, ticker: normalizedTicker });
+					console.log('[QuoteStore] Stored quote for:', normalizedTicker, quote);
 					return quote;
+				} else {
+					console.warn('[QuoteStore] No data in response:', response);
 				}
 			} catch (err) {
 				console.error(`Failed to fetch quote for ${ticker}:`, err);
@@ -210,7 +227,9 @@ function createQuotesStore() {
 					const fetchedQuotes = response.data as Quote[];
 					for (const quote of fetchedQuotes) {
 						if (quote && quote.ticker) {
-							state.quotes.set(quote.ticker, quote);
+							// Normalize ticker to uppercase to match retrieval
+							const normalizedTicker = quote.ticker.toUpperCase();
+							state.quotes.set(normalizedTicker, { ...quote, ticker: normalizedTicker });
 						}
 					}
 					return fetchedQuotes;

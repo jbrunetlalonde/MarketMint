@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import api from '$lib/utils/api';
 	import { getCompanyLogoUrl } from '$lib/utils/urls';
-	import EmptyState from '$lib/components/EmptyState.svelte';
 
 	interface EarningsEvent {
 		symbol: string;
@@ -15,62 +14,96 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let earnings = $state<EarningsEvent[]>([]);
-	let daysToFetch = $state(14);
-	let lastUpdated = $state<Date | null>(null);
 
-	function getTimeLabel(time: string): string {
-		if (time === 'amc' || time === 'After Market Close') return 'After Close';
-		if (time === 'bmo' || time === 'Before Market Open') return 'Before Open';
-		return time || 'TBD';
+	// Current month being displayed
+	let currentDate = $state(new Date());
+
+	// Get first and last day of month
+	function getMonthBounds(date: Date) {
+		const year = date.getFullYear();
+		const month = date.getMonth();
+		const firstDay = new Date(year, month, 1);
+		const lastDay = new Date(year, month + 1, 0);
+		return {
+			from: firstDay.toISOString().split('T')[0],
+			to: lastDay.toISOString().split('T')[0]
+		};
 	}
 
-	function getTimeClass(time: string): string {
-		if (time === 'amc' || time === 'After Market Close') return 'time-amc';
-		if (time === 'bmo' || time === 'Before Market Open') return 'time-bmo';
-		return '';
-	}
+	// Month label for header
+	const monthLabel = $derived(() => {
+		return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+	});
 
-	function formatDate(dateStr: string): string {
-		const date = new Date(dateStr + 'T00:00:00');
-		return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-	}
-
-	function getDayLabel(dateStr: string): string {
-		const today = new Date();
-		today.setHours(0, 0, 0, 0);
-		const tomorrow = new Date(today);
-		tomorrow.setDate(tomorrow.getDate() + 1);
-		const date = new Date(dateStr + 'T00:00:00');
-
-		if (date.getTime() === today.getTime()) return 'Today';
-		if (date.getTime() === tomorrow.getTime()) return 'Tomorrow';
-		return '';
-	}
-
-	function formatNumber(value: number | null | undefined): string {
-		if (value === null || value === undefined) return '-';
-		if (Math.abs(value) >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
-		if (Math.abs(value) >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
-		return `$${value.toFixed(2)}`;
-	}
-
+	// Group earnings by date, deduplicating symbols within each day
 	const groupedByDate = $derived.by(() => {
 		const groups: Record<string, EarningsEvent[]> = {};
 		for (const e of earnings) {
+			if (!e?.symbol) continue;
 			if (!groups[e.date]) groups[e.date] = [];
-			groups[e.date].push(e);
+			// Only add if symbol not already in this day's list
+			if (!groups[e.date].some((existing) => existing.symbol === e.symbol)) {
+				groups[e.date].push(e);
+			}
 		}
 		return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+	});
+
+	// Summary stats (count deduplicated entries)
+	const totalReports = $derived(
+		groupedByDate.reduce((sum, [, events]) => sum + events.length, 0)
+	);
+	const totalDays = $derived(groupedByDate.length);
+
+	// Format date for day card header
+	function formatDayHeader(dateStr: string) {
+		const date = new Date(dateStr + 'T00:00:00');
+		return {
+			dayNum: date.getDate(),
+			dayName: date.toLocaleDateString('en-US', { weekday: 'long' }),
+			monthYear: date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+		};
+	}
+
+	// Check if date is today
+	function isToday(dateStr: string): boolean {
+		const today = new Date().toISOString().split('T')[0];
+		return dateStr === today;
+	}
+
+	// Navigation functions
+	function prevMonth() {
+		const newDate = new Date(currentDate);
+		newDate.setMonth(newDate.getMonth() - 1);
+		currentDate = newDate;
+		loadEarnings();
+	}
+
+	function nextMonth() {
+		const newDate = new Date(currentDate);
+		newDate.setMonth(newDate.getMonth() + 1);
+		currentDate = newDate;
+		loadEarnings();
+	}
+
+	// Check if prev button should be disabled (can't go before current month)
+	const canGoPrev = $derived(() => {
+		const now = new Date();
+		return (
+			currentDate.getFullYear() > now.getFullYear() ||
+			(currentDate.getFullYear() === now.getFullYear() &&
+				currentDate.getMonth() > now.getMonth())
+		);
 	});
 
 	async function loadEarnings() {
 		loading = true;
 		error = null;
 		try {
-			const response = await api.getEarningsCalendar(daysToFetch);
+			const bounds = getMonthBounds(currentDate);
+			const response = await api.getEarningsCalendar({ from: bounds.from, to: bounds.to });
 			if (response.success && response.data) {
 				earnings = response.data;
-				lastUpdated = new Date();
 			} else {
 				earnings = [];
 			}
@@ -93,80 +126,75 @@
 
 <div class="earnings-page">
 	<header class="page-header">
-		<div class="header-content">
-			<h1 class="headline headline-xl">Earnings Calendar</h1>
-			<p class="subhead">Upcoming company earnings reports and estimates</p>
-		</div>
-		<div class="header-controls">
-			<select bind:value={daysToFetch} onchange={() => loadEarnings()} class="input">
-				<option value={7}>Next 7 days</option>
-				<option value={14}>Next 14 days</option>
-				<option value={30}>Next 30 days</option>
-			</select>
-			<button onclick={() => loadEarnings()} class="btn btn-secondary" disabled={loading}>
-				{loading ? 'Loading...' : 'Refresh'}
-			</button>
-		</div>
+		<h1 class="title">Earnings Calendar</h1>
+		<div class="title-rule"></div>
 	</header>
 
-	{#if lastUpdated}
-		<p class="last-updated">
-			Last updated: {lastUpdated.toLocaleTimeString()}
-		</p>
+	<nav class="month-nav">
+		<button class="nav-btn" onclick={prevMonth} disabled={!canGoPrev()}>
+			<span class="arrow">&larr;</span> Prev
+		</button>
+		<span class="month-label">{monthLabel()}</span>
+		<button class="nav-btn" onclick={nextMonth}>
+			Next <span class="arrow">&rarr;</span>
+		</button>
+	</nav>
+
+	{#if !loading && earnings.length > 0}
+		<p class="summary">{totalReports} upcoming earnings across {totalDays} days</p>
 	{/if}
 
 	{#if loading}
-		<div class="loading-grid">
-			{#each Array(5) as _, i (i)}
-				<div class="skeleton-card"></div>
+		<div class="loading-container">
+			{#each Array(3) as _, i (i)}
+				<div class="skeleton-day">
+					<div class="skeleton-header"></div>
+					<div class="skeleton-grid">
+						{#each Array(6) as _, j (j)}
+							<div class="skeleton-card"></div>
+						{/each}
+					</div>
+				</div>
 			{/each}
 		</div>
 	{:else if error}
-		<div class="card error-card">
+		<div class="error-container">
 			<p class="error">{error}</p>
-			<button onclick={() => loadEarnings()} class="btn btn-primary">Try Again</button>
+			<button onclick={() => loadEarnings()} class="retry-btn">Try Again</button>
 		</div>
 	{:else if earnings.length === 0}
-		<EmptyState
-			title="No upcoming earnings"
-			description="No earnings reports scheduled in this time range"
-			icon="calendar"
-		/>
+		<div class="empty-state">
+			<p>No earnings reports scheduled for {monthLabel()}</p>
+		</div>
 	{:else}
-		<div class="calendar-grid">
+		<div class="calendar-container">
 			{#each groupedByDate as [date, events] (date)}
-				<div class="date-card card">
-					<div class="date-header">
-						<span class="date-formatted">{formatDate(date)}</span>
-						{#if getDayLabel(date)}
-							<span class="date-label">{getDayLabel(date)}</span>
-						{/if}
-						<span class="event-count">{events.length} report{events.length !== 1 ? 's' : ''}</span>
+				{@const dayInfo = formatDayHeader(date)}
+				<div class="day-card" class:today={isToday(date)}>
+					<div class="day-header">
+						<div class="day-info">
+							<span class="day-num">{dayInfo.dayNum}</span>
+							<div class="day-text">
+								<span class="day-name">{dayInfo.dayName}</span>
+								<span class="month-year">{dayInfo.monthYear}</span>
+							</div>
+						</div>
+						<span class="report-count">{events.length} report{events.length !== 1 ? 's' : ''}</span>
 					</div>
-
-					<div class="earnings-list">
+					<div class="ticker-grid">
 						{#each events as event (event.symbol)}
-							<a href="/ticker/{event.symbol}" class="earnings-row">
+							<a href="/ticker/{event.symbol}" class="ticker-card">
 								<img
 									src={getCompanyLogoUrl(event.symbol)}
 									alt=""
-									class="company-logo"
+									class="ticker-logo"
 									loading="lazy"
 									onerror={(e) => {
 										const img = e.currentTarget as HTMLImageElement;
 										img.style.display = 'none';
 									}}
 								/>
-								<div class="company-info">
-									<span class="symbol">{event.symbol}</span>
-									<span class="time {getTimeClass(event.time)}">{getTimeLabel(event.time)}</span>
-								</div>
-								{#if event.epsEstimate !== null}
-									<div class="estimate">
-										<span class="estimate-label">EPS Est</span>
-										<span class="estimate-value">${event.epsEstimate?.toFixed(2)}</span>
-									</div>
-								{/if}
+								<span class="ticker-symbol">{event.symbol}</span>
 							</a>
 						{/each}
 					</div>
@@ -178,65 +206,126 @@
 
 <style>
 	.earnings-page {
-		max-width: 1200px;
+		max-width: 1400px;
 		margin: 0 auto;
-		padding: 2rem 1.5rem;
+		padding: 2rem 1.5rem 4rem;
 	}
 
 	.page-header {
+		margin-bottom: 2rem;
+	}
+
+	.title {
+		font-family: var(--font-mono);
+		font-size: 2.5rem;
+		font-weight: 700;
+		color: var(--color-ink);
+		margin: 0;
+	}
+
+	.title-rule {
+		height: 2px;
+		background: var(--color-ink);
+		margin-top: 0.75rem;
+	}
+
+	.month-nav {
 		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		gap: 2rem;
-		margin-bottom: 1.5rem;
-		flex-wrap: wrap;
+		align-items: center;
+		justify-content: flex-start;
+		gap: 1rem;
+		margin-bottom: 1rem;
 	}
 
-	.header-content {
-		flex: 1;
+	.nav-btn {
+		font-family: var(--font-mono);
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--color-ink);
+		background: transparent;
+		border: 1px solid var(--color-border);
+		padding: 0.5rem 1rem;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.15s;
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
 	}
 
-	.subhead {
+	.nav-btn:hover:not(:disabled) {
+		background: var(--color-newsprint-dark);
+	}
+
+	.nav-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.arrow {
+		font-size: 1rem;
+	}
+
+	.month-label {
+		font-family: var(--font-mono);
+		font-size: 1.125rem;
+		font-weight: 600;
+		color: var(--color-ink);
+	}
+
+	.summary {
 		font-family: var(--font-mono);
 		font-size: 0.875rem;
 		color: var(--color-ink-muted);
-		margin-top: 0.5rem;
+		margin-bottom: 2rem;
 	}
 
-	.header-controls {
+	.loading-container {
 		display: flex;
-		gap: 0.75rem;
-		align-items: center;
+		flex-direction: column;
+		gap: 2rem;
 	}
 
-	.last-updated {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: var(--color-ink-muted);
-		margin-bottom: 1.5rem;
+	.skeleton-day {
+		background: var(--color-paper);
+		border-radius: 8px;
+		overflow: hidden;
 	}
 
-	.loading-grid {
+	.skeleton-header {
+		height: 56px;
+		background: var(--color-newsprint-dark);
+	}
+
+	.skeleton-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-		gap: 1.5rem;
+		grid-template-columns: repeat(6, 1fr);
+		gap: 1rem;
+		padding: 1.5rem;
 	}
 
 	.skeleton-card {
-		height: 200px;
+		height: 48px;
 		background: var(--color-newsprint-dark);
-		border-radius: 4px;
+		border-radius: 24px;
 		animation: pulse 1.5s infinite;
 	}
 
 	@keyframes pulse {
-		0%, 100% { opacity: 0.5; }
-		50% { opacity: 1; }
+		0%,
+		100% {
+			opacity: 0.5;
+		}
+		50% {
+			opacity: 1;
+		}
 	}
 
-	.error-card {
+	.error-container {
 		text-align: center;
-		padding: 3rem;
+		padding: 4rem 2rem;
+		background: var(--color-paper);
+		border-radius: 8px;
 	}
 
 	.error {
@@ -246,146 +335,197 @@
 		margin-bottom: 1rem;
 	}
 
-	.calendar-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-		gap: 1.5rem;
-	}
-
-	.date-card {
-		overflow: hidden;
-	}
-
-	.date-header {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.75rem 1rem;
-		background: var(--color-newsprint-dark);
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.date-formatted {
+	.retry-btn {
 		font-family: var(--font-mono);
 		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--color-ink);
-	}
-
-	.date-label {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		padding: 0.125rem 0.375rem;
-		background: var(--color-ink);
+		font-weight: 500;
 		color: var(--color-newsprint);
-		border-radius: 2px;
+		background: var(--color-ink);
+		border: none;
+		padding: 0.625rem 1.25rem;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: opacity 0.15s;
 	}
 
-	.event-count {
-		margin-left: auto;
+	.retry-btn:hover {
+		opacity: 0.85;
+	}
+
+	.empty-state {
+		text-align: center;
+		padding: 4rem 2rem;
+		background: var(--color-paper);
+		border-radius: 8px;
+	}
+
+	.empty-state p {
 		font-family: var(--font-mono);
-		font-size: 0.6875rem;
+		font-size: 0.9375rem;
 		color: var(--color-ink-muted);
 	}
 
-	.earnings-list {
-		padding: 0.5rem;
+	.calendar-container {
+		display: flex;
+		flex-direction: column;
+		gap: 2rem;
 	}
 
-	.earnings-row {
+	.day-card {
+		background: var(--color-paper);
+		border-radius: 8px;
+		overflow: hidden;
+		border: 1px solid var(--color-border);
+	}
+
+	.day-card.today {
+		border-color: var(--color-ink);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+	}
+
+	.day-header {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.625rem 0.5rem;
+		justify-content: space-between;
+		padding: 0.875rem 1.25rem;
+		background: var(--color-ink);
+		color: var(--color-newsprint);
+	}
+
+	.day-info {
+		display: flex;
+		align-items: center;
+		gap: 0.875rem;
+	}
+
+	.day-num {
+		font-family: var(--font-mono);
+		font-size: 1.5rem;
+		font-weight: 700;
+		line-height: 1;
+	}
+
+	.day-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.day-name {
+		font-family: var(--font-mono);
+		font-size: 0.875rem;
+		font-weight: 600;
+	}
+
+	.month-year {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		opacity: 0.75;
+	}
+
+	.report-count {
+		font-family: var(--font-mono);
+		font-size: 0.8125rem;
+		opacity: 0.85;
+	}
+
+	.ticker-grid {
+		display: grid;
+		grid-template-columns: repeat(6, 1fr);
+		gap: 1rem;
+		padding: 1.25rem;
+	}
+
+	.ticker-card {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		padding: 0.625rem 1rem;
+		background: var(--color-newsprint);
+		border: 1px solid var(--color-border);
+		border-radius: 24px;
 		text-decoration: none;
 		color: inherit;
-		border-radius: 4px;
-		transition: background-color 0.15s;
+		transition: all 0.15s;
 	}
 
-	.earnings-row:hover {
-		background: var(--color-newsprint-dark);
+	.ticker-card:hover {
+		border-color: var(--color-ink);
+		background: var(--color-paper);
 	}
 
-	.company-logo {
-		width: 28px;
-		height: 28px;
+	.ticker-logo {
+		width: 24px;
+		height: 24px;
 		object-fit: contain;
 		border-radius: 4px;
-		background: var(--color-paper);
 		flex-shrink: 0;
 	}
 
-	.company-info {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
-	}
-
-	.symbol {
-		font-family: var(--font-mono);
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--color-ink);
-	}
-
-	.time {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		color: var(--color-ink-muted);
-	}
-
-	.time-bmo {
-		color: #d97706;
-	}
-
-	.time-amc {
-		color: #7c3aed;
-	}
-
-	.estimate {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		gap: 2px;
-	}
-
-	.estimate-label {
-		font-family: var(--font-mono);
-		font-size: 0.5625rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-ink-muted);
-	}
-
-	.estimate-value {
+	.ticker-symbol {
 		font-family: var(--font-mono);
 		font-size: 0.8125rem;
 		font-weight: 600;
 		color: var(--color-ink);
 	}
 
-	@media (max-width: 640px) {
-		.page-header {
-			flex-direction: column;
-			gap: 1rem;
+	@media (max-width: 1200px) {
+		.ticker-grid {
+			grid-template-columns: repeat(5, 1fr);
+		}
+	}
+
+	@media (max-width: 1000px) {
+		.ticker-grid {
+			grid-template-columns: repeat(4, 1fr);
+		}
+	}
+
+	@media (max-width: 768px) {
+		.earnings-page {
+			padding: 1.5rem 1rem 3rem;
 		}
 
-		.header-controls {
-			width: 100%;
+		.title {
+			font-size: 2rem;
 		}
 
-		.header-controls select {
-			flex: 1;
+		.ticker-grid {
+			grid-template-columns: repeat(3, 1fr);
+			gap: 0.75rem;
+			padding: 1rem;
 		}
 
-		.calendar-grid {
-			grid-template-columns: 1fr;
+		.ticker-card {
+			padding: 0.5rem 0.75rem;
+		}
+
+		.ticker-logo {
+			width: 20px;
+			height: 20px;
+		}
+
+		.ticker-symbol {
+			font-size: 0.75rem;
+		}
+
+		.skeleton-grid {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+
+	@media (max-width: 480px) {
+		.month-nav {
+			flex-wrap: wrap;
+			justify-content: center;
+		}
+
+		.ticker-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+
+		.skeleton-grid {
+			grid-template-columns: repeat(2, 1fr);
 		}
 	}
 </style>

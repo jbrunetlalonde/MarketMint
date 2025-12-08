@@ -1,16 +1,33 @@
 import { request } from './request';
 
+interface QuoteResponse {
+	ticker: string;
+	name?: string;
+	price: number;
+	change: number;
+	changePercent: number;
+	volume?: number;
+	marketCap?: number;
+	dayHigh?: number;
+	dayLow?: number;
+	open?: number;
+	previousClose?: number;
+	avgVolume?: number;
+	peRatio?: number;
+	eps?: number;
+	fiftyTwoWeekHigh?: number;
+	fiftyTwoWeekLow?: number;
+	exchange?: string;
+	sharesOutstanding?: number;
+	dividendYield?: number;
+}
+
 export const quotesApi = {
 	getQuote: (ticker: string, token?: string) =>
-		request<{ ticker: string; price: number; change: number; changePercent: number }>(
-			`/api/quotes/${ticker}`,
-			{ token }
-		),
+		request<QuoteResponse>(`/api/quotes/${ticker}`, { token }),
 
 	getBulkQuotes: (tickers: string[], token?: string) =>
-		request<
-			Array<{ ticker: string; price: number; change: number; changePercent: number }>
-		>(`/api/quotes?tickers=${tickers.join(',')}`, { token }),
+		request<QuoteResponse[]>(`/api/quotes?tickers=${tickers.join(',')}`, { token }),
 
 	getHistory: (ticker: string, period = '1y', token?: string) =>
 		request<{

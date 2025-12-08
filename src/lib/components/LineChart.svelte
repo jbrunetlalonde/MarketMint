@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { Chart, registerables } from 'chart.js';
-
-	// Register all Chart.js components
-	Chart.register(...registerables);
+	import { echart } from '$lib/actions/echarts';
+	import { themeStore } from '$lib/stores/theme.svelte';
+	import { buildSimpleLineOptions, getTheme } from '$lib/utils/chart-options';
 
 	interface Props {
 		data: Array<{ date: string; close: number }>;
@@ -13,118 +12,42 @@
 
 	let { data, label = 'Price', color = '#0066cc', height = 300 }: Props = $props();
 
-	let canvas: HTMLCanvasElement;
-	let chart: Chart | null = null;
+	const isDark = $derived(themeStore.resolvedTheme === 'dark');
+	const colors = $derived(getTheme(isDark));
 
-	const chartData = $derived({
-		labels: data.map((d) => {
-			const date = new Date(d.date);
-			return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-		}),
-		datasets: [
-			{
-				label,
-				data: data.map((d) => d.close),
-				borderColor: color,
-				backgroundColor: `${color}20`,
-				fill: true,
-				tension: 0.1,
-				pointRadius: 0,
-				pointHoverRadius: 4,
-				borderWidth: 2
-			}
-		]
-	});
-
-	$effect(() => {
-		if (!canvas) return;
-
-		// Destroy existing chart
-		if (chart) {
-			chart.destroy();
-		}
-
-		const ctx = canvas.getContext('2d');
-		if (!ctx) return;
-
-		chart = new Chart(ctx, {
-			type: 'line',
-			data: chartData,
-			options: {
-				responsive: true,
-				maintainAspectRatio: false,
-				interaction: {
-					intersect: false,
-					mode: 'index'
-				},
-				plugins: {
-					legend: {
-						display: false
-					},
-					tooltip: {
-						backgroundColor: '#1a1a1a',
-						titleFont: {
-							family: "'IBM Plex Mono', monospace"
-						},
-						bodyFont: {
-							family: "'IBM Plex Mono', monospace"
-						},
-						callbacks: {
-							label: (context) => {
-								const value = context.parsed.y;
-								return value !== null ? `$${value.toFixed(2)}` : '--';
-							}
-						}
-					}
-				},
-				scales: {
-					x: {
-						display: true,
-						grid: {
-							display: false
-						},
-						ticks: {
-							font: {
-								family: "'IBM Plex Mono', monospace",
-								size: 10
-							},
-							maxTicksLimit: 8
-						}
-					},
-					y: {
-						display: true,
-						position: 'right',
-						grid: {
-							color: '#e5e5e5'
-						},
-						ticks: {
-							font: {
-								family: "'IBM Plex Mono', monospace",
-								size: 10
-							},
-							callback: (value) => `$${value}`
-						}
-					}
-				}
-			}
-		});
-
-		return () => {
-			if (chart) {
-				chart.destroy();
-				chart = null;
-			}
-		};
-	});
+	const chartOptions = $derived(
+		data.length > 0 ? buildSimpleLineOptions(data, colors, { label, color }) : null
+	);
 </script>
 
 <div class="chart-container" style="height: {height}px;">
-	<canvas bind:this={canvas}></canvas>
+	{#if chartOptions}
+		<div
+			class="chart"
+			use:echart={{ options: chartOptions, theme: isDark ? 'dark' : 'light' }}
+		></div>
+	{:else}
+		<div class="no-data">No data available</div>
+	{/if}
 </div>
 
 <style>
 	.chart-container {
 		position: relative;
 		width: 100%;
+	}
+
+	.chart {
+		width: 100%;
+		height: 100%;
+	}
+
+	.no-data {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+		color: var(--color-ink-muted);
+		font-size: 0.875rem;
 	}
 </style>
