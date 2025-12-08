@@ -34,6 +34,7 @@ import portfolioRoutes from './routes/portfolio.js';
 import insiderRoutes from './routes/insider.js';
 import screenerRoutes from './routes/screener.js';
 import { initializeScheduler } from './services/scheduler.js';
+import { warmCachesWithDelay } from './services/cacheWarmer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -179,6 +180,10 @@ async function startServer() {
   // Initialize scheduler for newsletter and data refresh jobs
   if (config.nodeEnv !== 'test') {
     initializeScheduler();
+    // Warm caches after server starts (non-blocking)
+    warmCachesWithDelay(3000).catch(err => {
+      logger.warn('Cache warming failed', { error: err.message });
+    });
   }
 
   server.listen(config.port, () => {

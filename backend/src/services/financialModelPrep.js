@@ -776,9 +776,10 @@ export async function getStockNews(ticker, limit = 10) {
   if (cached) return cached;
 
   try {
-    const data = await fetchFMP(`/stock-news?symbol=${ticker}&limit=${limit}`);
+    // Use new stable endpoint /news/stock?symbols=TICKER
+    const data = await fetchFMP(`/news/stock?symbols=${ticker}&limit=${limit}`);
 
-    const formatted = data.map(item => ({
+    const formatted = (Array.isArray(data) ? data : []).map(item => ({
       title: item.title,
       text: item.text,
       url: item.url,
@@ -1116,16 +1117,25 @@ export async function getEarningsCalendar(from, to) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFMP(`/earning_calendar?from=${from}&to=${to}`);
+      // Use new stable endpoint /earnings-calendar
+      const data = await fetchFMP(`/earnings-calendar?from=${from}&to=${to}`);
 
-      const formatted = (Array.isArray(data) ? data : []).map(item => ({
-        symbol: item.symbol,
-        date: item.date,
-        time: item.time || 'bmo', // bmo = before market open, amc = after market close
-        epsEstimate: item.epsEstimated,
-        revenue: item.revenue,
-        revenueEstimate: item.revenueEstimated
-      }));
+      const formatted = (Array.isArray(data) ? data : [])
+        .filter(item => {
+          // Filter to only items within date range
+          const itemDate = new Date(item.date);
+          const fromDate = new Date(from);
+          const toDate = new Date(to);
+          return itemDate >= fromDate && itemDate <= toDate;
+        })
+        .map(item => ({
+          symbol: item.symbol,
+          date: item.date,
+          time: item.time || 'bmo', // bmo = before market open, amc = after market close
+          epsEstimate: item.epsEstimated,
+          revenue: item.revenueActual,
+          revenueEstimate: item.revenueEstimated
+        }));
 
       setMemoryCache(cacheKey, formatted, ttl);
       return formatted;
@@ -1247,20 +1257,13 @@ export async function searchSymbols(query, limit = 10) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      // Use v3 API for search (stable API doesn't support search)
-      const url = `https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(query)}&limit=${limit * 3}&apikey=${config.fmpApiKey}`;
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`FMP search API error: ${response.status}`);
-      }
-
-      const data = await response.json();
+      // Use new stable search-symbol endpoint
+      const data = await fetchFMP(`/search-symbol?query=${encodeURIComponent(query)}&limit=${limit * 3}`);
 
       const formatted = (Array.isArray(data) ? data : []).map(item => ({
         symbol: item.symbol,
         name: item.name,
-        exchange: item.stockExchange || item.exchangeShortName || item.exchange || 'N/A'
+        exchange: item.exchangeFullName || item.exchange || item.stockExchange || item.exchangeShortName || 'N/A'
       }));
 
       // Sort results to prioritize:
@@ -1408,7 +1411,7 @@ export async function getInsiderTradesLatest(page = 0, limit = 100) {
 }
 
 export async function getInsiderTradesBySymbol(ticker, page = 0) {
-  const cacheKey = getCacheKey('insiderTrades', ticker);
+  const cacheKey = getCacheKey('insiderTrades', `${ticker}-${page}`);
   const ttl = config.cacheTTL.politicalTrades || 3600;
 
   const cached = getFromMemoryCache(cacheKey);
@@ -1416,15 +1419,7 @@ export async function getInsiderTradesBySymbol(ticker, page = 0) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      // Use v4 API for symbol-specific insider trades
-      const url = `https://financialmodelingprep.com/api/v4/insider-trading?symbol=${ticker}&page=${page}&apikey=${config.fmpApiKey}`;
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`FMP insider API error: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await fetchFMP(`/insider-trading?symbol=${ticker}&page=${page}`);
       setMemoryCache(cacheKey, data, ttl);
       return Array.isArray(data) ? data : [];
     } catch (err) {
@@ -1504,21 +1499,20 @@ export async function getSecFilings(ticker, limit = 20) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      // Use v3 API for SEC filings
-      const url = `https://financialmodelingprep.com/api/v3/sec_filings/${ticker}?limit=${limit}&apikey=${config.fmpApiKey}`;
-      const response = await fetch(url);
+      // Use stable API for SEC filings - requires date range
+      const today = new Date();
+      const fromDate = new Date(today);
+      fromDate.setFullYear(fromDate.getFullYear() - 2); // Last 2 years
+      const from = fromDate.toISOString().split('T')[0];
+      const to = today.toISOString().split('T')[0];
 
-      if (!response.ok) {
-        throw new Error(`FMP SEC filings API error: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await fetchFMP(`/sec-filings-search/symbol?symbol=${ticker}&from=${from}&to=${to}&page=0&limit=${limit}`);
 
       const formatted = (Array.isArray(data) ? data : []).map(item => ({
         symbol: item.symbol,
         cik: item.cik,
-        formType: item.type,
-        filingDate: item.fillingDate,
+        formType: item.formType || item.type,
+        filingDate: item.filingDate || item.fillingDate,
         acceptedDate: item.acceptedDate,
         link: item.link,
         finalLink: item.finalLink
@@ -1653,6 +1647,70 @@ export async function getOHLCV(ticker, period = '1y') {
   });
 }
 
+// Sector Performance
+export async function getSectorPerformance() {
+  const cacheKey = 'fmp:sectorPerformance';
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      // Get the last trading day (skip weekends)
+      const today = new Date();
+      let lastTradingDay = new Date(today);
+
+      // If Sunday, go back to Friday
+      if (today.getDay() === 0) {
+        lastTradingDay.setDate(lastTradingDay.getDate() - 2);
+      }
+      // If Saturday, go back to Friday
+      else if (today.getDay() === 6) {
+        lastTradingDay.setDate(lastTradingDay.getDate() - 1);
+      }
+      // If Monday before market hours, go back to Friday
+      else if (today.getDay() === 1 && today.getHours() < 9) {
+        lastTradingDay.setDate(lastTradingDay.getDate() - 3);
+      }
+      // If other weekday before market open, use previous day
+      else if (today.getHours() < 9) {
+        lastTradingDay.setDate(lastTradingDay.getDate() - 1);
+        // If that makes it Sunday, go back to Friday
+        if (lastTradingDay.getDay() === 0) {
+          lastTradingDay.setDate(lastTradingDay.getDate() - 2);
+        }
+      }
+
+      const dateStr = lastTradingDay.toISOString().split('T')[0];
+
+      // Use new stable sector-performance-snapshot endpoint
+      const data = await fetchFMP(`/sector-performance-snapshot?date=${dateStr}`);
+
+      // Group by sector and get unique sectors (API returns multiple exchanges)
+      const sectorMap = new Map();
+      (Array.isArray(data) ? data : []).forEach(item => {
+        // Prioritize NASDAQ data, or use first occurrence
+        if (!sectorMap.has(item.sector) || item.exchange === 'NASDAQ') {
+          sectorMap.set(item.sector, {
+            sector: item.sector,
+            changePercent: item.averageChange || 0
+          });
+        }
+      });
+
+      const formatted = Array.from(sectorMap.values())
+        .sort((a, b) => b.changePercent - a.changePercent);
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error('FMP sector performance error:', err.message);
+      return [];
+    }
+  });
+}
+
 // Batch quotes for multiple tickers
 export async function getBatchQuotes(tickers) {
   const symbols = Array.isArray(tickers) ? tickers.join(',') : tickers;
@@ -1720,6 +1778,7 @@ export default {
   getGeographicRevenue,
   getInstitutionalHolders,
   getEarningsCalendar,
+  getSectorPerformance,
   searchSymbols,
   bulkRefreshProfiles,
   bulkRefreshFinancials,

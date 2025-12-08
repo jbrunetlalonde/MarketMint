@@ -257,7 +257,8 @@ router.get('/:ticker/executives', async (req, res, next) => {
       const data = await fmp.getKeyExecutives(validation.ticker);
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('Executives fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -281,7 +282,8 @@ router.get('/:ticker/rating', async (req, res, next) => {
       const data = await fmp.getRating(validation.ticker);
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: null });
+      logger.warn('Rating fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -305,7 +307,8 @@ router.get('/:ticker/dcf', async (req, res, next) => {
       const data = await fmp.getDCF(validation.ticker);
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: null });
+      logger.warn('DCF fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -330,7 +333,8 @@ router.get('/:ticker/ratios', async (req, res, next) => {
       const data = await fmp.getFinancialRatios(validation.ticker, parseInt(limit));
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('Ratios fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -354,7 +358,8 @@ router.get('/:ticker/enterprise-value', async (req, res, next) => {
       const data = await fmp.getEnterpriseValue(validation.ticker, 1);
       res.json({ success: true, data: data[0] || null });
     } catch (err) {
-      res.json({ success: true, data: null });
+      logger.warn('Enterprise value fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -379,7 +384,8 @@ router.get('/:ticker/news', async (req, res, next) => {
       const data = await fmp.getStockNews(validation.ticker, parseInt(limit));
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('Stock news fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -403,7 +409,8 @@ router.get('/:ticker/dividends', async (req, res, next) => {
       const data = await fmp.getDividends(validation.ticker);
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('Dividends fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -427,7 +434,8 @@ router.get('/:ticker/splits', async (req, res, next) => {
       const data = await fmp.getStockSplits(validation.ticker);
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('Stock splits fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -451,7 +459,8 @@ router.get('/:ticker/price-target', async (req, res, next) => {
       const data = await fmp.getPriceTarget(validation.ticker);
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: null });
+      logger.warn('Price target fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -475,7 +484,8 @@ router.get('/:ticker/peers', async (req, res, next) => {
       const data = await fmp.getStockPeers(validation.ticker);
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('Stock peers fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -500,7 +510,8 @@ router.get('/:ticker/segments', async (req, res, next) => {
       const data = await fmp.getRevenueSegments(validation.ticker, period);
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('Revenue segments fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -524,7 +535,8 @@ router.get('/:ticker/institutional', async (req, res, next) => {
       const data = await fmp.getInstitutionalHolders(validation.ticker);
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('Institutional holders fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -550,8 +562,8 @@ router.get('/earnings/calendar', async (req, res, next) => {
       const data = await fmp.getEarningsCalendar(from, to);
       res.json({ success: true, data });
     } catch (err) {
-      logger.warn('Earnings calendar fetch failed', { error: err.message });
-      res.json({ success: true, data: [] });
+      logger.warn('Earnings calendar fetch failed', { from, to, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -576,7 +588,8 @@ router.get('/:ticker/earnings-history', async (req, res, next) => {
       const data = await fmp.getEarningsSurprises(validation.ticker, parseInt(limit));
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('Earnings surprises fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -601,7 +614,8 @@ router.get('/:ticker/sec-filings', async (req, res, next) => {
       const data = await fmp.getSecFilings(validation.ticker, parseInt(limit));
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('SEC filings fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -626,7 +640,8 @@ router.get('/:ticker/analyst-grades', async (req, res, next) => {
       const data = await fmp.getAnalystGrades(validation.ticker, parseInt(limit));
       res.json({ success: true, data });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('Analyst grades fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -651,7 +666,8 @@ router.get('/:ticker/insider-trades', async (req, res, next) => {
       const data = await fmp.getInsiderTradesBySymbol(validation.ticker);
       res.json({ success: true, data: data.slice(0, parseInt(limit)) });
     } catch (err) {
-      res.json({ success: true, data: [] });
+      logger.warn('Insider trades fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -696,7 +712,8 @@ router.get('/:ticker/key-metrics', async (req, res, next) => {
         }
       });
     } catch (err) {
-      res.json({ success: true, data: null });
+      logger.warn('Key metrics fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
     }
   } catch (err) {
     next(err);
@@ -766,9 +783,11 @@ router.get('/:ticker/revenue-segments', async (req, res, next) => {
         }
       });
     } catch (err) {
+      logger.warn('Revenue segments fetch failed', { ticker: validation.ticker, error: err.message });
       res.json({
         success: true,
-        data: { productSegments: [], geographicSegments: [] }
+        data: { productSegments: [], geographicSegments: [] },
+        error: { code: 'FMP_ERROR', message: err.message }
       });
     }
   } catch (err) {

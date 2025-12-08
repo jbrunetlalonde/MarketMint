@@ -248,7 +248,7 @@ async function upsertBulkOfficials(officials) {
 
 // Get trades from database
 async function getTradesFromDB(options = {}) {
-  const { ticker, party, chamber, transactionType, limit = 50 } = options;
+  const { ticker, party, chamber, transactionType, limit = 50, offset = 0 } = options;
 
   let whereConditions = ['1=1'];
   const params = [];
@@ -260,8 +260,15 @@ async function getTradesFromDB(options = {}) {
   }
 
   if (party) {
-    whereConditions.push(`po.party = $${paramIndex++}`);
-    params.push(party);
+    const partyLower = party.toLowerCase();
+    if (partyLower === 'd' || partyLower === 'democrat') {
+      whereConditions.push(`(LOWER(po.party) LIKE '%democrat%' OR LOWER(po.party) = 'd')`);
+    } else if (partyLower === 'r' || partyLower === 'republican') {
+      whereConditions.push(`(LOWER(po.party) LIKE '%republican%' OR LOWER(po.party) = 'r')`);
+    } else {
+      whereConditions.push(`po.party = $${paramIndex++}`);
+      params.push(party);
+    }
   }
 
   if (chamber) {
@@ -276,6 +283,7 @@ async function getTradesFromDB(options = {}) {
   }
 
   params.push(limit);
+  params.push(offset);
 
   const result = await query(
     `SELECT
@@ -286,7 +294,7 @@ async function getTradesFromDB(options = {}) {
      LEFT JOIN political_officials po ON pt.official_name = po.name
      WHERE ${whereConditions.join(' AND ')}
      ORDER BY pt.reported_date DESC NULLS LAST, pt.transaction_date DESC NULLS LAST
-     LIMIT $${paramIndex}`,
+     LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
     params
   );
 
@@ -418,16 +426,16 @@ export async function getCongressionalTrades(ticker) {
 
 // Get all recent trades from FMP's latest endpoints
 export async function getRecentTrades(options = {}) {
-  const { party, chamber, transactionType, ticker, limit = 50 } = options;
+  const { party, chamber, transactionType, ticker, limit = 50, offset = 0 } = options;
 
   // If ticker is specified, use the ticker-specific endpoint
   if (ticker) {
     return getCongressionalTrades(ticker);
   }
 
-  // First check database for recent trades
-  const dbTrades = await getTradesFromDB({ party, chamber, transactionType, limit });
-  if (dbTrades.length > 0) {
+  // First check database for recent trades (always use DB for pagination support)
+  const dbTrades = await getTradesFromDB({ party, chamber, transactionType, limit, offset });
+  if (dbTrades.length > 0 || offset > 0) {
     return dbTrades;
   }
 

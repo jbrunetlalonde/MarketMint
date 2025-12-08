@@ -1,5 +1,6 @@
 import fmp from './financialModelPrep.js';
 import { query } from '../config/database.js';
+import { config } from '../config/env.js';
 
 // Memory cache
 const memoryCache = new Map();

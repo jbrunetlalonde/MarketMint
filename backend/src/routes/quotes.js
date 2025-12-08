@@ -7,6 +7,29 @@ import logger from '../config/logger.js';
 const router = Router();
 
 /**
+ * GET /api/quotes/sector-performance
+ * Get sector performance data from FMP
+ * IMPORTANT: This route must be before /:ticker to avoid matching "sector-performance" as a ticker
+ */
+router.get('/sector-performance', async (req, res, next) => {
+  try {
+    const data = await fmp.getSectorPerformance();
+    res.json({
+      success: true,
+      data,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    logger.error('Sector performance fetch failed', { error: err.message });
+    res.json({
+      success: true,
+      data: [],
+      error: { code: 'FMP_ERROR', message: err.message }
+    });
+  }
+});
+
+/**
  * GET /api/quotes/movers
  * Get market movers: top gainers, losers, and most active stocks
  * IMPORTANT: This route must be before /:ticker to avoid matching "movers" as a ticker
