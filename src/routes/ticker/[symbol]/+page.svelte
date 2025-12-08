@@ -9,27 +9,12 @@
 	} from '$lib/utils/formatters';
 	import { quotes } from '$lib/stores/quotes.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
-	import CandlestickChart from '$lib/components/CandlestickChart.svelte';
-	import IndicatorPanel from '$lib/components/IndicatorPanel.svelte';
-	import FinancialTable from '$lib/components/FinancialTable.svelte';
-	import FinancialChart from '$lib/components/FinancialChart.svelte';
-	import CompanyAbout from '$lib/components/CompanyAbout.svelte';
-	import ExecutiveCard from '$lib/components/ExecutiveCard.svelte';
-	import RatingsRadar from '$lib/components/RatingsRadar.svelte';
-	import PriceTargetCard from '$lib/components/PriceTargetCard.svelte';
-	import InstitutionalOwners from '$lib/components/InstitutionalOwners.svelte';
-	import SplitHistory from '$lib/components/SplitHistory.svelte';
-	import SectorPeers from '$lib/components/SectorPeers.svelte';
-	import TickerNews from '$lib/components/TickerNews.svelte';
-	import InsiderTrades from '$lib/components/InsiderTrades.svelte';
-	import SecFilings from '$lib/components/SecFilings.svelte';
-	import DividendHistory from '$lib/components/DividendHistory.svelte';
-	import RevenueSegments from '$lib/components/RevenueSegments.svelte';
-	import EarningsHistory from '$lib/components/EarningsHistory.svelte';
-	import AnalystBreakdown from '$lib/components/AnalystBreakdown.svelte';
-	import FinancialScorecard from '$lib/components/FinancialScorecard.svelte';
+	import { getCompanyLogoUrl, getPortraitUrl, getCongressPortraitUrl, getAvatarFallback } from '$lib/utils/urls';
 	import api from '$lib/utils/api';
-	import { getPortraitUrl, getCongressPortraitUrl as getCongressPortrait } from '$lib/utils/urls';
+
+	// Chart.js imports
+	import { Chart, registerables } from 'chart.js';
+	Chart.register(...registerables);
 
 	const symbol = $derived(page.params.symbol?.toUpperCase() || '');
 
@@ -37,16 +22,8 @@
 	let chartLoading = $state(false);
 	let error = $state<string | null>(null);
 	let selectedPeriod = $state('1y');
-	let financialPeriod = $state<'annual' | 'quarter'>('annual');
+	let financialPeriod = $state<'annual' | 'quarter'>('quarter');
 	let activeFinancialTab = $state<'income' | 'balance' | 'cashflow'>('income');
-
-	// Chart options
-	let showVolume = $state(true);
-	let showSMA = $state(false);
-	let showEMA = $state(false);
-	let showBollinger = $state(false);
-	let showRSI = $state(false);
-	let showMACD = $state(false);
 
 	// Quote data from store
 	const quoteData = $derived(quotes.getQuote(symbol));
@@ -77,11 +54,26 @@
 		titleSince?: number;
 	}>>([]);
 
+	// Get CEO from executives
+	const ceo = $derived(executives.find(e => e.title?.toLowerCase().includes('ceo') || e.title?.toLowerCase().includes('chief executive')));
+
 	// Analyst data
 	let rating = $state<{
 		rating: string;
 		ratingScore: number;
 		ratingRecommendation: string;
+		ratingDetailsDCFScore?: number;
+		ratingDetailsDCFRecommendation?: string;
+		ratingDetailsROEScore?: number;
+		ratingDetailsROERecommendation?: string;
+		ratingDetailsROAScore?: number;
+		ratingDetailsROARecommendation?: string;
+		ratingDetailsDEScore?: number;
+		ratingDetailsDERecommendation?: string;
+		ratingDetailsPEScore?: number;
+		ratingDetailsPERecommendation?: string;
+		ratingDetailsPBScore?: number;
+		ratingDetailsPBRecommendation?: string;
 	} | null>(null);
 
 	let priceTarget = $state<{
@@ -89,11 +81,6 @@
 		targetLow: number;
 		targetConsensus: number;
 		targetMedian: number;
-	} | null>(null);
-
-	let dcf = $state<{
-		dcf: number;
-		stockPrice: number;
 	} | null>(null);
 
 	let peers = $state<string[]>([]);
@@ -107,7 +94,10 @@
 		netIncome: number;
 		grossProfit: number;
 		operatingIncome: number;
+		operatingExpenses?: number;
 		eps: number;
+		ebitda?: number;
+		netProfitMargin?: number;
 	}>>([]);
 
 	let balanceData = $state<Array<{
@@ -130,6 +120,7 @@
 		financingCashFlow: number;
 		freeCashFlow: number;
 		capitalExpenditure: number;
+		netCashFlow?: number;
 	}>>([]);
 
 	// Institutional holders
@@ -139,6 +130,7 @@
 		dateReported: string;
 		change: number;
 		changePercentage: number;
+		value?: number;
 	}>>([]);
 
 	// Stock splits
@@ -159,57 +151,6 @@
 		image?: string;
 	}>>([]);
 
-	// Insider trades
-	let insiderTrades = $state<Array<{
-		filingDate: string;
-		transactionDate: string;
-		reportingName: string;
-		transactionType: string;
-		securitiesTransacted: number;
-		price: number | null;
-		securityName: string;
-		typeOfOwner: string;
-	}>>([]);
-
-	// SEC filings
-	let secFilings = $state<Array<{
-		symbol: string;
-		type: string;
-		link: string;
-		finalLink: string;
-		acceptedDate: string;
-		fillingDate: string;
-	}>>([]);
-
-	// Dividend history
-	let dividends = $state<Array<{
-		date: string;
-		label: string;
-		dividend: number;
-		adjDividend: number;
-		paymentDate: string;
-		recordDate: string;
-		declarationDate: string;
-	}>>([]);
-
-	// Revenue segments
-	let revenueSegments = $state<{
-		productSegments: Array<{ segment: string; revenue: number; year: number }>;
-		geographicSegments: Array<{ segment: string; revenue: number; year: number }>;
-	}>({ productSegments: [], geographicSegments: [] });
-
-	// Earnings history
-	let earningsHistory = $state<Array<{
-		date: string;
-		symbol?: string;
-		actualEarningsResult: number | null;
-		estimatedEarning: number | null;
-		revenue?: number | null;
-		revenueEstimated?: number | null;
-		surprisePercent: number | null;
-		revenueSurprisePercent?: number | null;
-	}>>([]);
-
 	// Analyst grades
 	let analystGrades = $state<Array<{
 		symbol?: string;
@@ -220,27 +161,11 @@
 		action: string;
 	}>>([]);
 
-	// Financial metrics for scorecard
-	let financialMetrics = $state<{
-		peRatio?: number | null;
-		pbRatio?: number | null;
-		debtToEquity?: number | null;
-		currentRatio?: number | null;
-		roe?: number | null;
-		roa?: number | null;
-		dividendYield?: number | null;
-		grossProfitMargin?: number | null;
-		operatingProfitMargin?: number | null;
-		netProfitMargin?: number | null;
-	} | null>(null);
-
-	// Loading states for new data
-	let newsLoading = $state(false);
-	let insiderLoading = $state(false);
-	let filingsLoading = $state(false);
-	let dividendsLoading = $state(false);
-	let earningsLoading = $state(false);
-	let gradesLoading = $state(false);
+	// Revenue segments
+	let revenueSegments = $state<{
+		productSegments: Array<{ segment: string; revenue: number; year: number; quarter?: number }>;
+		geographicSegments: Array<{ segment: string; revenue: number; year: number }>;
+	}>({ productSegments: [], geographicSegments: [] });
 
 	// Congress trades for this ticker
 	let congressTrades = $state<Array<{
@@ -254,7 +179,7 @@
 		state: string | null;
 	}>>([]);
 
-	// OHLC price data for candlestick chart
+	// OHLC price data for chart
 	interface OHLCData {
 		time: string;
 		open: number;
@@ -262,39 +187,31 @@
 		low: number;
 		close: number;
 		volume: number;
-		sma20?: number | null;
-		sma50?: number | null;
-		sma200?: number | null;
-		ema12?: number | null;
-		ema26?: number | null;
-		rsi?: number | null;
-		macd?: number | null;
-		macdSignal?: number | null;
-		macdHistogram?: number | null;
-		bollingerUpper?: number | null;
-		bollingerMiddle?: number | null;
-		bollingerLower?: number | null;
 	}
 	let ohlcData = $state<OHLCData[]>([]);
 
 	// Loading states
 	let financialsLoading = $state(false);
-	let institutionalLoading = $state(false);
-	let splitsLoading = $state(false);
 
 	// Watchlist state
 	let inWatchlist = $state(false);
 	let watchlistLoading = $state(false);
+
+	// Chart canvas refs
+	let priceChartCanvas = $state<HTMLCanvasElement | null>(null);
+	let priceChart = $state<Chart | null>(null);
 
 	const periods = [
 		{ label: '1D', value: '1d' },
 		{ label: '1W', value: '5d' },
 		{ label: '1M', value: '1m' },
 		{ label: '3M', value: '3m' },
+		{ label: '6M', value: '6m' },
 		{ label: 'YTD', value: 'ytd' },
-		{ label: '1Y', value: '1y' },
-		{ label: '5Y', value: '5y' },
-		{ label: '10Y', value: '10y' }
+		{ label: '1YR', value: '1y' },
+		{ label: '5YR', value: '5y' },
+		{ label: '10YR', value: '10y' },
+		{ label: 'All', value: 'max' }
 	];
 
 	async function loadData() {
@@ -330,16 +247,14 @@
 				executives = data.executives || [];
 				rating = data.rating;
 				priceTarget = data.priceTarget as typeof priceTarget;
-				dcf = data.dcf;
 				peers = data.peers || [];
 
-				// Fetch peer quotes
 				if (peers.length > 0) {
 					loadPeerQuotes(peers);
 				}
 			}
 
-			// Fetch OHLC price history with indicators
+			// Fetch OHLC price history
 			await loadOHLC(selectedPeriod);
 
 			// Load financial statements
@@ -351,69 +266,34 @@
 				institutionalRes,
 				splitsRes,
 				newsRes,
-				insiderRes,
-				filingsRes,
-				dividendsRes,
-				segmentsRes,
-				earningsRes,
 				gradesRes,
-				metricsRes
+				segmentsRes
 			] = await Promise.all([
 				api.getPoliticalTradesByTicker(symbol, 10),
 				api.getInstitutionalHolders(symbol),
 				api.getSplits(symbol),
 				api.getStockNews(symbol, 10),
-				api.getInsiderTradesByTicker(symbol, 20),
-				api.getSecFilings(symbol, 15),
-				api.getDividends(symbol),
-				api.getRevenueSegmentsV2(symbol),
-				api.getEarningsHistory(symbol, 8),
-				api.getAnalystGrades(symbol, 15),
-				api.getKeyMetrics(symbol)
+				api.getAnalystGrades(symbol, 20),
+				api.getRevenueSegmentsV2(symbol)
 			]);
 
 			if (congressRes.success && congressRes.data) {
 				congressTrades = congressRes.data;
 			}
-
 			if (institutionalRes.success && institutionalRes.data) {
 				institutionalHolders = institutionalRes.data;
 			}
-
 			if (splitsRes.success && splitsRes.data) {
 				splits = splitsRes.data;
 			}
-
 			if (newsRes.success && newsRes.data) {
 				news = newsRes.data;
 			}
-
-			if (insiderRes.success && insiderRes.data) {
-				insiderTrades = insiderRes.data;
-			}
-
-			if (filingsRes.success && filingsRes.data) {
-				secFilings = filingsRes.data;
-			}
-
-			if (dividendsRes.success && dividendsRes.data) {
-				dividends = dividendsRes.data;
-			}
-
-			if (segmentsRes.success && segmentsRes.data) {
-				revenueSegments = segmentsRes.data;
-			}
-
-			if (earningsRes.success && earningsRes.data) {
-				earningsHistory = earningsRes.data;
-			}
-
 			if (gradesRes.success && gradesRes.data) {
 				analystGrades = gradesRes.data;
 			}
-
-			if (metricsRes.success && metricsRes.data) {
-				financialMetrics = metricsRes.data;
+			if (segmentsRes.success && segmentsRes.data) {
+				revenueSegments = segmentsRes.data;
 			}
 		} catch (err) {
 			error = 'Failed to load stock data';
@@ -450,7 +330,7 @@
 
 	async function loadPeerQuotes(peerTickers: string[]) {
 		try {
-			const filteredPeers = peerTickers.filter(p => p !== symbol).slice(0, 8);
+			const filteredPeers = peerTickers.filter(p => p !== symbol).slice(0, 10);
 			if (filteredPeers.length === 0) return;
 
 			const res = await api.getBulkQuotes(filteredPeers);
@@ -474,23 +354,92 @@
 	async function loadOHLC(period: string) {
 		chartLoading = true;
 		try {
-			const res = await api.getIndicators(symbol, {
-				period,
-				sma: '20,50,200',
-				ema: '12,26',
-				rsi: true,
-				macd: true,
-				bollinger: true
-			});
-
+			const res = await api.getIndicators(symbol, { period });
 			if (res.success && res.data?.indicators) {
 				ohlcData = res.data.indicators;
+				updatePriceChart();
 			}
 		} catch (err) {
 			console.error('Failed to load OHLC data:', err);
 		} finally {
 			chartLoading = false;
 		}
+	}
+
+	function updatePriceChart() {
+		if (!priceChartCanvas || ohlcData.length === 0) return;
+
+		const ctx = priceChartCanvas.getContext('2d');
+		if (!ctx) return;
+
+		if (priceChart) {
+			priceChart.destroy();
+		}
+
+		const labels = ohlcData.map(d => {
+			const date = new Date(d.time);
+			if (selectedPeriod === '1d') {
+				return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+			}
+			return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+		});
+
+		const prices = ohlcData.map(d => d.close);
+
+		priceChart = new Chart(ctx, {
+			type: 'line',
+			data: {
+				labels,
+				datasets: [{
+					data: prices,
+					borderColor: '#d97706',
+					backgroundColor: 'rgba(217, 119, 6, 0.1)',
+					borderWidth: 2,
+					fill: true,
+					tension: 0.1,
+					pointRadius: 0,
+					pointHoverRadius: 4
+				}]
+			},
+			options: {
+				responsive: true,
+				maintainAspectRatio: false,
+				plugins: {
+					legend: { display: false },
+					tooltip: {
+						mode: 'index',
+						intersect: false,
+						callbacks: {
+							label: (ctx) => `$${ctx.parsed.y.toFixed(2)}`
+						}
+					}
+				},
+				scales: {
+					x: {
+						grid: { display: false },
+						ticks: {
+							font: { family: 'IBM Plex Mono', size: 10 },
+							color: '#666',
+							maxTicksLimit: 8
+						}
+					},
+					y: {
+						position: 'left',
+						grid: { color: 'rgba(0,0,0,0.05)' },
+						ticks: {
+							font: { family: 'IBM Plex Mono', size: 10 },
+							color: '#666',
+							callback: (value) => `$${value}`
+						}
+					}
+				},
+				interaction: {
+					mode: 'nearest',
+					axis: 'x',
+					intersect: false
+				}
+			}
+		});
 	}
 
 	function handlePeriodChange(period: string) {
@@ -543,519 +492,698 @@
 
 		return () => {
 			quotes.unsubscribe(symbol);
+			if (priceChart) priceChart.destroy();
 		};
 	});
 
-	// Congress trade helpers
-	function getCongressPortraitUrl(name: string, title?: string | null): string {
-		const chamber = title?.toLowerCase().includes('senator') ? 'senate' : 'house';
-		return getCongressPortrait(name, chamber);
+	// Update chart when canvas is ready
+	$effect(() => {
+		if (priceChartCanvas && ohlcData.length > 0) {
+			updatePriceChart();
+		}
+	});
+
+	// Helper functions
+	function formatPeriodLabel(date: string, period: string): string {
+		const d = new Date(date);
+		if (financialPeriod === 'quarter') {
+			const q = Math.ceil((d.getMonth() + 1) / 3);
+			return `Q${q}-${d.getFullYear()}`;
+		}
+		return d.getFullYear().toString();
 	}
 
-	function getPartyAbbrev(party?: string | null): string {
-		if (!party) return '?';
-		const p = party.toLowerCase();
-		if (p.includes('democrat')) return 'D';
-		if (p.includes('republican')) return 'R';
-		return party.charAt(0).toUpperCase();
+	function getChangeIndicator(current: number, previous: number | undefined): string {
+		if (!previous || previous === 0) return '';
+		return current >= previous ? '^' : 'v';
 	}
 
-	function getPartyClass(party?: string | null): string {
-		if (!party) return 'bg-gray-100 text-gray-700';
-		const p = party.toLowerCase();
-		if (p.includes('democrat')) return 'bg-blue-100 text-blue-800';
-		if (p.includes('republican')) return 'bg-red-100 text-red-800';
-		return 'bg-gray-100 text-gray-700';
+	function getChangeClass(current: number, previous: number | undefined): string {
+		if (!previous || previous === 0) return '';
+		return current >= previous ? 'positive' : 'negative';
 	}
 
 	function formatTradeDate(dateStr: string): string {
 		if (!dateStr) return '-';
-		return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+		return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
 	}
+
+	function getCongressPortrait(name: string, title?: string | null): string {
+		const chamber = title?.toLowerCase().includes('senator') ? 'senate' : 'house';
+		return getCongressPortraitUrl(name, chamber);
+	}
+
+	// Grade summary calculations
+	const gradeSummary = $derived.by(() => {
+		const summary: Record<string, number> = {};
+		for (const grade of analystGrades) {
+			const g = grade.newGrade;
+			summary[g] = (summary[g] || 0) + 1;
+		}
+		return summary;
+	});
+
+	// Institutional ownership summary
+	const institutionalSummary = $derived.by(() => {
+		const totalShares = institutionalHolders.reduce((sum, h) => sum + h.shares, 0);
+		const sharesOutstanding = quoteData?.sharesOutstanding || 1;
+		const percentOwned = (totalShares / sharesOutstanding) * 100;
+		return {
+			percentOwned: Math.min(percentOwned, 100),
+			totalHolders: institutionalHolders.length
+		};
+	});
+
+	// Senate and House congress trades
+	const senateTrades = $derived(congressTrades.filter(t => t.title?.toLowerCase().includes('senator')));
+	const houseTrades = $derived(congressTrades.filter(t => !t.title?.toLowerCase().includes('senator')));
 </script>
 
 <svelte:head>
-	<title>{symbol} - MarketMint</title>
+	<title>{symbol} - {profile?.name || 'Stock'} | MarketMint</title>
 </svelte:head>
 
 <div class="ticker-page">
 	<!-- Header -->
 	<header class="ticker-header">
-		<div class="header-main">
+		<div class="header-top">
 			<div class="header-left">
-				<h1 class="ticker-symbol">{symbol}</h1>
-				{#if profile?.name}
-					<span class="company-name">{profile.name}</span>
-				{/if}
-				{#if profile?.sector}
-					<span class="sector-badge">{profile.sector}</span>
-				{/if}
-			</div>
-
-			<div class="header-actions">
-				<button
-					class="watchlist-btn"
-					class:in-watchlist={inWatchlist}
-					onclick={toggleWatchlist}
-					disabled={watchlistLoading}
-				>
-					{#if watchlistLoading}
-						...
-					{:else if inWatchlist}
-						In Watchlist
-					{:else}
-						+ Watchlist
-					{/if}
-				</button>
+				<img
+					src={getCompanyLogoUrl(symbol)}
+					alt={symbol}
+					class="stock-logo"
+					onerror={(e) => { e.currentTarget.style.display = 'none'; }}
+				/>
+				<div class="header-info">
+					<div class="symbol-row">
+						<h1 class="ticker-symbol">{symbol}</h1>
+						<button
+							class="watchlist-btn"
+							class:in-watchlist={inWatchlist}
+							onclick={toggleWatchlist}
+							disabled={watchlistLoading}
+						>
+							{inWatchlist ? 'In Watchlist' : 'Add To Watchlist'}
+						</button>
+					</div>
+					<div class="company-row-info">
+						{#if profile?.name}
+							<span class="company-name">{profile.name}</span>
+						{/if}
+						{#if quoteData?.exchange}
+							<span class="exchange-dot">-</span>
+							<span class="exchange">{quoteData.exchange}</span>
+						{/if}
+						{#if quoteData}
+							<span class="price-inline">
+								{formatCurrency(quoteData.price ?? 0)}
+								<span class={getPriceClass(quoteData.changePercent ?? 0)}>
+									{(quoteData.changePercent ?? 0) >= 0 ? '^' : 'v'} {formatPercent(Math.abs(quoteData.changePercent ?? 0))}
+									({(quoteData.change ?? 0) >= 0 ? '+' : ''}{formatCurrency(quoteData.change ?? 0, 'USD', 2)})
+								</span>
+							</span>
+						{/if}
+					</div>
+				</div>
 			</div>
 		</div>
 
-		{#if loading}
-			<div class="price-loading"></div>
-		{:else if quoteData}
-			<div class="price-display">
-				<span class="current-price">{formatCurrency(quoteData.price ?? 0)}</span>
-				<span class="price-change {getPriceClass(quoteData.changePercent ?? 0)}">
-					{formatPercent(quoteData.changePercent ?? 0)}
-					({quoteData.change !== null && quoteData.change >= 0 ? '+' : ''}{formatCurrency(quoteData.change ?? 0, 'USD', 2)})
-				</span>
-				{#if quotes.connected}
-					<span class="live-indicator">Live</span>
-				{/if}
-			</div>
-			<p class="quote-meta">
-				{quoteData.exchange ?? 'NYSE'} | Updated: {quoteData.lastUpdated
-					? new Date(quoteData.lastUpdated).toLocaleTimeString()
-					: 'Just now'}
-			</p>
-		{/if}
+		<!-- Period Buttons -->
+		<div class="period-buttons">
+			{#each periods as period (period.value)}
+				<button
+					class="period-btn"
+					class:active={selectedPeriod === period.value}
+					onclick={() => handlePeriodChange(period.value)}
+				>
+					{period.label}
+				</button>
+			{/each}
+		</div>
 	</header>
 
-	<!-- Main Content Grid -->
-	<div class="content-grid">
-		<!-- Chart Section -->
-		<section class="chart-section">
-			<div class="section-header">
-				<h2>Price Chart</h2>
-				<div class="indicator-toggles">
-					<button
-						class="indicator-btn"
-						class:active={showVolume}
-						onclick={() => showVolume = !showVolume}
-						title="Toggle volume bars"
-					>Vol</button>
-					<button
-						class="indicator-btn"
-						class:active={showSMA}
-						onclick={() => showSMA = !showSMA}
-						title="Simple Moving Average (20, 50, 200)"
-					>SMA</button>
-					<button
-						class="indicator-btn"
-						class:active={showEMA}
-						onclick={() => showEMA = !showEMA}
-						title="Exponential Moving Average (12, 26)"
-					>EMA</button>
-					<button
-						class="indicator-btn"
-						class:active={showBollinger}
-						onclick={() => showBollinger = !showBollinger}
-						title="Bollinger Bands"
-					>BB</button>
-					<span class="indicator-divider"></span>
-					<button
-						class="indicator-btn"
-						class:active={showRSI}
-						onclick={() => showRSI = !showRSI}
-						title="Relative Strength Index"
-					>RSI</button>
-					<button
-						class="indicator-btn"
-						class:active={showMACD}
-						onclick={() => showMACD = !showMACD}
-						title="Moving Average Convergence Divergence"
-					>MACD</button>
-				</div>
-			</div>
-
-			{#if loading || chartLoading}
-				<div class="chart-loading"></div>
-			{:else if ohlcData.length > 0}
-				<CandlestickChart
-					data={ohlcData}
-					height={360}
-					{showVolume}
-					{showSMA}
-					{showEMA}
-					{showBollinger}
-				/>
-
-				{#if showRSI}
-					<IndicatorPanel data={ohlcData} type="rsi" height={100} />
-				{/if}
-
-				{#if showMACD}
-					<IndicatorPanel data={ohlcData} type="macd" height={100} />
-				{/if}
-			{:else}
-				<div class="chart-empty">No historical data available</div>
-			{/if}
-
-			<div class="period-buttons">
-				{#each periods as period (period.value)}
-					<button
-						class="period-btn"
-						class:active={selectedPeriod === period.value}
-						onclick={() => handlePeriodChange(period.value)}
-					>
-						{period.label}
-					</button>
-				{/each}
-			</div>
-		</section>
-
-		<!-- Key Statistics Sidebar -->
-		<aside class="stats-sidebar">
-			<div class="stats-card">
-				<h3>Key Statistics</h3>
-				{#if loading}
-					<div class="stats-loading"></div>
-				{:else}
-					<table class="stats-table">
-						<tbody>
-							<tr>
-								<td title="The closing price from the previous trading day">Previous Close</td>
-								<td>{quoteData?.previousClose ? formatCurrency(quoteData.previousClose) : '--'}</td>
-							</tr>
-							<tr>
-								<td title="The price at which the stock started trading today">Open</td>
-								<td>{quoteData?.open ? formatCurrency(quoteData.open) : '--'}</td>
-							</tr>
-							<tr>
-								<td title="The lowest and highest prices reached during today's session">Day Range</td>
-								<td>{quoteData?.dayLow && quoteData?.dayHigh
-									? `${formatCurrency(quoteData.dayLow)} - ${formatCurrency(quoteData.dayHigh)}`
-									: '--'}</td>
-							</tr>
-							<tr>
-								<td title="The lowest and highest prices over the past 52 weeks">52W Range</td>
-								<td>{quoteData?.fiftyTwoWeekLow && quoteData?.fiftyTwoWeekHigh
-									? `${formatCurrency(quoteData.fiftyTwoWeekLow)} - ${formatCurrency(quoteData.fiftyTwoWeekHigh)}`
-									: '--'}</td>
-							</tr>
-							<tr>
-								<td title="Number of shares traded today">Volume</td>
-								<td>{quoteData?.volume ? formatCompact(quoteData.volume) : '--'}</td>
-							</tr>
-							<tr>
-								<td title="Total market value of all outstanding shares">Market Cap</td>
-								<td>{quoteData?.marketCap ? formatCompact(quoteData.marketCap) : '--'}</td>
-							</tr>
-							<tr>
-								<td title="Price-to-Earnings ratio: Stock price divided by earnings per share. Higher values may indicate overvaluation.">P/E Ratio</td>
-								<td>{quoteData?.peRatio?.toFixed(2) ?? '--'}</td>
-							</tr>
-							<tr>
-								<td title="Earnings Per Share: Net income divided by outstanding shares. Higher is generally better.">EPS</td>
-								<td>{quoteData?.eps ? formatCurrency(quoteData.eps) : '--'}</td>
-							</tr>
-						</tbody>
-					</table>
-				{/if}
-			</div>
-		</aside>
-
-		<!-- Company Info Row -->
-		<section class="company-row">
-			<div class="company-about-wrapper">
-				<CompanyAbout
-					name={profile?.name ?? symbol}
-					description={profile?.description}
-					sector={profile?.sector}
-					industry={profile?.industry}
-					website={profile?.website}
-					employees={profile?.employees}
-					headquarters={profile?.headquarters}
-					ipoDate={profile?.ipoDate}
-					ceo={profile?.ceo}
-					loading={loading}
-				/>
-			</div>
-			<div class="executive-wrapper">
-				<ExecutiveCard
-					{executives}
-					ceoPortrait={ceoPortrait ?? undefined}
-					loading={loading}
-				/>
-			</div>
-		</section>
-
-		<!-- Analyst Section -->
-		<section class="analyst-row">
-			<div class="ratings-wrapper">
-				<RatingsRadar
-					rating={rating?.rating}
-					ratingScore={rating?.ratingScore}
-					ratingRecommendation={rating?.ratingRecommendation}
-					loading={loading}
-				/>
-			</div>
-			<div class="price-target-wrapper">
-				<PriceTargetCard
-					currentPrice={quoteData?.price ?? 0}
-					targetHigh={priceTarget?.targetHigh}
-					targetLow={priceTarget?.targetLow}
-					targetConsensus={priceTarget?.targetConsensus}
-					targetMedian={priceTarget?.targetMedian}
-					loading={loading}
-				/>
-			</div>
-		</section>
-
-		<!-- Financial Statements Section -->
-		<section class="financials-section">
-			<div class="financials-header">
-				<h2>Financial Statements</h2>
-				<div class="period-toggle">
-					<button
-						class="toggle-btn"
-						class:active={financialPeriod === 'annual'}
-						onclick={() => handleFinancialPeriodChange('annual')}
-					>
-						Annual
-					</button>
-					<button
-						class="toggle-btn"
-						class:active={financialPeriod === 'quarter'}
-						onclick={() => handleFinancialPeriodChange('quarter')}
-					>
-						Quarterly
-					</button>
-				</div>
-			</div>
-
-			<div class="financial-tabs">
-				<button
-					class="tab-btn"
-					class:active={activeFinancialTab === 'income'}
-					onclick={() => activeFinancialTab = 'income'}
-				>
-					Income Statement
-				</button>
-				<button
-					class="tab-btn"
-					class:active={activeFinancialTab === 'balance'}
-					onclick={() => activeFinancialTab = 'balance'}
-				>
-					Balance Sheet
-				</button>
-				<button
-					class="tab-btn"
-					class:active={activeFinancialTab === 'cashflow'}
-					onclick={() => activeFinancialTab = 'cashflow'}
-				>
-					Cash Flow
-				</button>
-			</div>
-
-			<div class="tab-content">
-				{#if activeFinancialTab === 'income'}
-					{#if incomeData.length > 0}
-						<FinancialChart type="income" data={incomeData} />
-					{/if}
-					<FinancialTable
-						type="income"
-						data={incomeData}
-						loading={financialsLoading}
-					/>
-				{:else if activeFinancialTab === 'balance'}
-					{#if balanceData.length > 0}
-						<FinancialChart type="balance" data={balanceData} />
-					{/if}
-					<FinancialTable
-						type="balance"
-						data={balanceData}
-						loading={financialsLoading}
-					/>
-				{:else}
-					{#if cashflowData.length > 0}
-						<FinancialChart type="cashflow" data={cashflowData} />
-					{/if}
-					<FinancialTable
-						type="cashflow"
-						data={cashflowData}
-						loading={financialsLoading}
-					/>
-				{/if}
-			</div>
-		</section>
-
-		<!-- News Section -->
-		<section class="news-section">
-			<TickerNews
-				{news}
-				loading={newsLoading}
-				ticker={symbol}
-			/>
-		</section>
-
-		<!-- Earnings and Analyst Activity Row -->
-		<section class="earnings-analyst-row">
-			<div class="earnings-wrapper">
-				<EarningsHistory
-					earnings={earningsHistory}
-					loading={earningsLoading}
-					ticker={symbol}
-				/>
-			</div>
-			<div class="analyst-wrapper">
-				<AnalystBreakdown
-					grades={analystGrades}
-					loading={gradesLoading}
-					ticker={symbol}
-				/>
-			</div>
-		</section>
-
-		<!-- Financial Scorecard and Revenue Segments Row -->
-		<section class="scorecard-segments-row">
-			<div class="scorecard-wrapper">
-				<FinancialScorecard
-					metrics={financialMetrics}
-					loading={loading}
-					ticker={symbol}
-				/>
-			</div>
-			<div class="segments-wrapper">
-				<RevenueSegments
-					productSegments={revenueSegments.productSegments}
-					geographicSegments={revenueSegments.geographicSegments}
-					loading={loading}
-					ticker={symbol}
-				/>
-			</div>
-		</section>
-
-		<!-- Additional Info Row -->
-		<section class="info-row">
-			<div class="institutional-wrapper">
-				<InstitutionalOwners
-					holders={institutionalHolders}
-					sharesOutstanding={quoteData?.sharesOutstanding}
-					loading={institutionalLoading}
-					ticker={symbol}
-				/>
-			</div>
-			<div class="splits-wrapper">
-				<SplitHistory
-					{splits}
-					loading={splitsLoading}
-				/>
-			</div>
-			<div class="peers-wrapper">
-				<SectorPeers
-					{peers}
-					quotes={peerQuotes}
-					currentTicker={symbol}
-					loading={loading}
-				/>
-			</div>
-		</section>
-
-		<!-- Insider Trades and SEC Filings Row -->
-		<section class="insider-filings-row">
-			<div class="insider-wrapper">
-				<InsiderTrades
-					trades={insiderTrades}
-					loading={insiderLoading}
-					ticker={symbol}
-				/>
-			</div>
-			<div class="filings-wrapper">
-				<SecFilings
-					filings={secFilings}
-					loading={filingsLoading}
-					ticker={symbol}
-				/>
-			</div>
-		</section>
-
-		<!-- Dividends Section -->
-		{#if dividends.length > 0}
-			<section class="dividends-section">
-				<DividendHistory
-					{dividends}
-					loading={dividendsLoading}
-					ticker={symbol}
-				/>
-			</section>
-		{/if}
-
-		<!-- Congress Trades Section -->
-		{#if congressTrades.length > 0}
-			<section class="congress-section">
-				<div class="section-card">
-					<div class="section-header">
-						<h2>Congress Trading Activity</h2>
+	<!-- Main Content -->
+	<div class="main-content">
+		<!-- Left Column -->
+		<div class="left-column">
+			<!-- Chart Section -->
+			<section class="chart-section">
+				{#if loading || chartLoading}
+					<div class="chart-loading"></div>
+				{:else if ohlcData.length > 0}
+					<div class="chart-container">
+						<canvas bind:this={priceChartCanvas}></canvas>
 					</div>
-					<div class="congress-table-wrapper">
-						<table class="congress-table">
+				{:else}
+					<div class="chart-empty">No historical data available</div>
+				{/if}
+			</section>
+
+			<!-- Income Statement -->
+			<section class="financial-section">
+				<div class="section-header-row">
+					<h2>Income Statement</h2>
+					<div class="period-toggle">
+						<button
+							class="toggle-btn"
+							class:active={financialPeriod === 'quarter'}
+							onclick={() => handleFinancialPeriodChange('quarter')}
+						>Quarterly</button>
+						<button
+							class="toggle-btn"
+							class:active={financialPeriod === 'annual'}
+							onclick={() => handleFinancialPeriodChange('annual')}
+						>Annually</button>
+					</div>
+				</div>
+
+				{#if incomeData.length > 0}
+					<div class="financial-table-wrapper">
+						<table class="financial-table">
 							<thead>
 								<tr>
-									<th>Official</th>
-									<th>Type</th>
-									<th>Amount</th>
-									<th>Date</th>
+									<th>PERIOD</th>
+									<th>REVENUE</th>
+									<th>OPERATING EXP...</th>
+									<th>NET INCOME</th>
+									<th>NET PROFIT MAR...</th>
+									<th>EARNINGS PE...</th>
+									<th>EBITDA</th>
 								</tr>
 							</thead>
 							<tbody>
-								{#each congressTrades as trade (trade.id)}
+								{#each incomeData as row, i (row.date)}
+									{@const prev = incomeData[i + 1]}
 									<tr>
-										<td>
-											<a href="/political/member/{encodeURIComponent(trade.officialName)}" class="official-link">
-												<img
-													src={getCongressPortraitUrl(trade.officialName, trade.title)}
-													alt={trade.officialName}
-													class="official-portrait"
-													onerror={(e) => e.currentTarget.style.display = 'none'}
-												/>
-												<div class="official-info">
-													<span class="official-name">{trade.officialName}</span>
-													<span class="official-title">
-														{trade.title || 'Official'}
-														{#if trade.party || trade.state}
-															<span class="party-badge {getPartyClass(trade.party)}">
-																{getPartyAbbrev(trade.party)}{#if trade.state}-{trade.state}{/if}
-															</span>
-														{/if}
-													</span>
-												</div>
-											</a>
+										<td>{formatPeriodLabel(row.date, row.period)}</td>
+										<td class={getChangeClass(row.revenue, prev?.revenue)}>
+											{formatCompact(row.revenue)} {getChangeIndicator(row.revenue, prev?.revenue)}
 										</td>
-										<td>
-											<span class="trade-type" class:buy={trade.transactionType === 'BUY'} class:sell={trade.transactionType === 'SELL'}>
-												{trade.transactionType}
-											</span>
+										<td class={getChangeClass(row.operatingExpenses || 0, prev?.operatingExpenses)}>
+											{formatCompact(row.operatingExpenses || row.operatingIncome)} {getChangeIndicator(row.operatingExpenses || 0, prev?.operatingExpenses)}
 										</td>
-										<td class="trade-amount">{trade.amountDisplay}</td>
-										<td class="trade-date">{formatTradeDate(trade.transactionDate)}</td>
+										<td class={getChangeClass(row.netIncome, prev?.netIncome)}>
+											{formatCompact(row.netIncome)} {getChangeIndicator(row.netIncome, prev?.netIncome)}
+										</td>
+										<td class={getChangeClass(row.netProfitMargin || 0, prev?.netProfitMargin)}>
+											{((row.netProfitMargin || (row.netIncome / row.revenue)) * 100).toFixed(2)}% {getChangeIndicator(row.netProfitMargin || 0, prev?.netProfitMargin)}
+										</td>
+										<td class={getChangeClass(row.eps, prev?.eps)}>
+											${row.eps.toFixed(2)} {getChangeIndicator(row.eps, prev?.eps)}
+										</td>
+										<td class={getChangeClass(row.ebitda || 0, prev?.ebitda)}>
+											{formatCompact(row.ebitda || 0)} {getChangeIndicator(row.ebitda || 0, prev?.ebitda)}
+										</td>
 									</tr>
 								{/each}
 							</tbody>
 						</table>
 					</div>
-					<div class="congress-more">
-						<a href="/political?ticker={symbol}">View all Congress trades for {symbol}</a>
+				{:else}
+					<p class="no-data">No income statement data available</p>
+				{/if}
+			</section>
+
+			<!-- Balance Statement -->
+			<section class="financial-section">
+				<div class="section-header-row">
+					<h2>Balance Statement</h2>
+					<div class="period-toggle">
+						<button class="toggle-btn" class:active={financialPeriod === 'quarter'} onclick={() => handleFinancialPeriodChange('quarter')}>Quarterly</button>
+						<button class="toggle-btn" class:active={financialPeriod === 'annual'} onclick={() => handleFinancialPeriodChange('annual')}>Annually</button>
 					</div>
 				</div>
+
+				{#if balanceData.length > 0}
+					<div class="financial-table-wrapper">
+						<table class="financial-table">
+							<thead>
+								<tr>
+									<th>PERIOD</th>
+									<th>CASH & SHORT-TERM</th>
+									<th>TOTAL ASSETS</th>
+									<th>TOTAL LIABILITIES</th>
+									<th>TOTAL EQUITY</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each balanceData as row, i (row.date)}
+									{@const prev = balanceData[i + 1]}
+									<tr>
+										<td>{formatPeriodLabel(row.date, row.period)}</td>
+										<td class={getChangeClass(row.cashAndCashEquivalents, prev?.cashAndCashEquivalents)}>
+											{formatCompact(row.cashAndCashEquivalents)} {getChangeIndicator(row.cashAndCashEquivalents, prev?.cashAndCashEquivalents)}
+										</td>
+										<td class={getChangeClass(row.totalAssets, prev?.totalAssets)}>
+											{formatCompact(row.totalAssets)} {getChangeIndicator(row.totalAssets, prev?.totalAssets)}
+										</td>
+										<td class={getChangeClass(row.totalLiabilities, prev?.totalLiabilities)}>
+											{formatCompact(row.totalLiabilities)} {getChangeIndicator(row.totalLiabilities, prev?.totalLiabilities)}
+										</td>
+										<td class={getChangeClass(row.totalEquity, prev?.totalEquity)}>
+											{formatCompact(row.totalEquity)} {getChangeIndicator(row.totalEquity, prev?.totalEquity)}
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{:else}
+					<p class="no-data">No balance sheet data available</p>
+				{/if}
 			</section>
-		{/if}
+
+			<!-- Cash Flow Statement -->
+			<section class="financial-section">
+				<div class="section-header-row">
+					<h2>Cash Flow Statement</h2>
+					<div class="period-toggle">
+						<button class="toggle-btn" class:active={financialPeriod === 'quarter'} onclick={() => handleFinancialPeriodChange('quarter')}>Quarterly</button>
+						<button class="toggle-btn" class:active={financialPeriod === 'annual'} onclick={() => handleFinancialPeriodChange('annual')}>Annually</button>
+					</div>
+				</div>
+
+				{#if cashflowData.length > 0}
+					<div class="financial-table-wrapper">
+						<table class="financial-table">
+							<thead>
+								<tr>
+									<th>PERIOD</th>
+									<th>NET INCOME</th>
+									<th>CASH FROM OPER...</th>
+									<th>CASH FROM INVE...</th>
+									<th>CASH FROM FINAN...</th>
+									<th>NET CHANGE</th>
+									<th>FREE CASH FLOW</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each cashflowData as row, i (row.date)}
+									{@const prev = cashflowData[i + 1]}
+									<tr>
+										<td>{formatPeriodLabel(row.date, row.period)}</td>
+										<td class={getChangeClass(row.netIncome, prev?.netIncome)}>
+											{formatCompact(row.netIncome)} {getChangeIndicator(row.netIncome, prev?.netIncome)}
+										</td>
+										<td class={getChangeClass(row.operatingCashFlow, prev?.operatingCashFlow)}>
+											{formatCompact(row.operatingCashFlow)} {getChangeIndicator(row.operatingCashFlow, prev?.operatingCashFlow)}
+										</td>
+										<td class={getChangeClass(row.investingCashFlow, prev?.investingCashFlow)}>
+											{formatCompact(row.investingCashFlow)} {getChangeIndicator(row.investingCashFlow, prev?.investingCashFlow)}
+										</td>
+										<td class={getChangeClass(row.financingCashFlow, prev?.financingCashFlow)}>
+											{formatCompact(row.financingCashFlow)} {getChangeIndicator(row.financingCashFlow, prev?.financingCashFlow)}
+										</td>
+										<td class={getChangeClass(row.netCashFlow || 0, prev?.netCashFlow)}>
+											{formatCompact(row.netCashFlow || (row.operatingCashFlow + row.investingCashFlow + row.financingCashFlow))} {getChangeIndicator(row.netCashFlow || 0, prev?.netCashFlow)}
+										</td>
+										<td class={getChangeClass(row.freeCashFlow, prev?.freeCashFlow)}>
+											{formatCompact(row.freeCashFlow)} {getChangeIndicator(row.freeCashFlow, prev?.freeCashFlow)}
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{:else}
+					<p class="no-data">No cash flow data available</p>
+				{/if}
+			</section>
+
+			<!-- Revenue by Products -->
+			{#if revenueSegments.productSegments.length > 0}
+				<section class="financial-section">
+					<div class="section-header-row">
+						<h2>Revenue by Products</h2>
+					</div>
+					<div class="segments-grid">
+						{#each [...new Set(revenueSegments.productSegments.map(s => s.segment))].slice(0, 6) as segment}
+							<div class="segment-card">
+								<div class="segment-icon"></div>
+								<span class="segment-name">{segment}</span>
+							</div>
+						{/each}
+					</div>
+				</section>
+			{/if}
+
+			<!-- News Section -->
+			{#if news.length > 0}
+				<section class="news-section">
+					<h2>NEWS</h2>
+					<div class="news-list">
+						{#each news.slice(0, 5) as article (article.url)}
+							<article class="news-item">
+								<time class="news-date">
+									{new Date(article.publishedDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} - {new Date(article.publishedDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} UTC
+								</time>
+								<h3 class="news-title">{article.title}</h3>
+								<a href={article.url} target="_blank" rel="noopener" class="news-link">Read more</a>
+							</article>
+						{/each}
+					</div>
+				</section>
+			{/if}
+		</div>
+
+		<!-- Right Column (Sidebar) -->
+		<div class="right-column">
+			<!-- Key Stats -->
+			<section class="stats-section">
+				<table class="stats-table">
+					<tbody>
+						<tr>
+							<td>Market Cap</td>
+							<td>{quoteData?.marketCap ? formatCompact(quoteData.marketCap) : '--'}</td>
+						</tr>
+						<tr>
+							<td>52w High</td>
+							<td>{quoteData?.fiftyTwoWeekHigh ? formatCurrency(quoteData.fiftyTwoWeekHigh) : '--'}</td>
+						</tr>
+						<tr>
+							<td>52w Low</td>
+							<td>{quoteData?.fiftyTwoWeekLow ? formatCurrency(quoteData.fiftyTwoWeekLow) : '--'}</td>
+						</tr>
+						<tr>
+							<td>Dividend Yield</td>
+							<td>{quoteData?.dividendYield ? formatPercent(quoteData.dividendYield) : '0.00%'}</td>
+						</tr>
+						<tr>
+							<td>P/E</td>
+							<td>{quoteData?.peRatio?.toFixed(2) ?? '--'}</td>
+						</tr>
+						<tr>
+							<td>Volume</td>
+							<td>{quoteData?.volume ? formatCompact(quoteData.volume) : '--'}</td>
+						</tr>
+						<tr>
+							<td>Outstanding Shares</td>
+							<td>{quoteData?.sharesOutstanding ? formatCompact(quoteData.sharesOutstanding) : '--'}</td>
+						</tr>
+					</tbody>
+				</table>
+			</section>
+
+			<!-- About Section -->
+			<section class="about-section">
+				<h3>About {profile?.name || symbol}</h3>
+				{#if profile?.website}
+					<a href={profile.website} target="_blank" rel="noopener" class="website-link">
+						{profile.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+					</a>
+				{/if}
+				{#if profile?.description}
+					<p class="description">{profile.description.slice(0, 300)}{profile.description.length > 300 ? '...' : ''}</p>
+				{/if}
+			</section>
+
+			<!-- CEO Section -->
+			{#if ceo || profile?.ceo}
+				<section class="ceo-section">
+					<div class="ceo-portrait-container">
+						{#if ceoPortrait}
+							<img
+								src={ceoPortrait}
+								alt={ceo?.name || profile?.ceo}
+								class="ceo-portrait"
+								onerror={(e) => { e.currentTarget.src = getAvatarFallback(ceo?.name || profile?.ceo || 'CEO'); }}
+							/>
+						{:else}
+							<img
+								src={getAvatarFallback(ceo?.name || profile?.ceo || 'CEO')}
+								alt={ceo?.name || profile?.ceo}
+								class="ceo-portrait"
+							/>
+						{/if}
+					</div>
+					<div class="ceo-info">
+						<span class="ceo-title">CEO</span>
+						<span class="ceo-name">{ceo?.name || profile?.ceo}</span>
+						<a href="/ticker/{symbol}/insiders" class="view-insiders-btn">View Insider Trades</a>
+					</div>
+
+					{#if ceo?.pay}
+						<div class="compensation-section">
+							<h4>Compensation Summary</h4>
+							<table class="compensation-table">
+								<tbody>
+									<tr><td>Total Compensation</td><td>{formatCurrency(ceo.pay)}</td></tr>
+								</tbody>
+							</table>
+						</div>
+					{/if}
+				</section>
+			{/if}
+
+			<!-- Company Info -->
+			<section class="company-info-section">
+				<table class="info-table">
+					<tbody>
+						{#if profile?.industry}
+							<tr><td>Industry</td><td>{profile.industry}</td></tr>
+						{/if}
+						{#if profile?.sector}
+							<tr><td>Sector</td><td>{profile.sector}</td></tr>
+						{/if}
+						{#if profile?.ipoDate}
+							<tr><td>Went public</td><td>{new Date(profile.ipoDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td></tr>
+						{/if}
+						{#if profile?.employees}
+							<tr><td>Full time employees</td><td>{profile.employees.toLocaleString()}</td></tr>
+						{/if}
+					</tbody>
+				</table>
+			</section>
+
+			<!-- Split Record -->
+			{#if splits.length > 0}
+				<section class="splits-section">
+					<h3>Split Record</h3>
+					<table class="splits-table">
+						<thead>
+							<tr>
+								<th>DATE</th>
+								<th>TYPE</th>
+								<th>RATIO</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each splits as split (split.date)}
+								<tr>
+									<td>{new Date(split.date).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>
+									<td class="split-type">Forward</td>
+									<td>{split.numerator}:{split.denominator}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</section>
+			{/if}
+
+			<!-- Ratings Snapshot -->
+			{#if rating}
+				<section class="ratings-section">
+					<h3>Ratings Snapshot</h3>
+					<div class="rating-display">
+						<span class="rating-label">Rating:</span>
+						<span class="rating-value">{rating.rating}</span>
+					</div>
+					<table class="ratings-detail-table">
+						<tbody>
+							<tr><td>DCF</td><td>{rating.ratingDetailsDCFScore ?? '-'}</td></tr>
+							<tr><td>Return On Equity</td><td>{rating.ratingDetailsROEScore ?? '-'}</td></tr>
+							<tr><td>Return On Assets</td><td>{rating.ratingDetailsROAScore ?? '-'}</td></tr>
+							<tr><td>Debt To Equity</td><td>{rating.ratingDetailsDEScore ?? '-'}</td></tr>
+							<tr><td>Price To Earnings</td><td>{rating.ratingDetailsPEScore ?? '-'}</td></tr>
+							<tr><td>Price To Book</td><td>{rating.ratingDetailsPBScore ?? '-'}</td></tr>
+							<tr class="overall"><td>Overall Score</td><td>{rating.ratingScore}</td></tr>
+						</tbody>
+					</table>
+				</section>
+			{/if}
+
+			<!-- Analyst Grades -->
+			{#if analystGrades.length > 0}
+				<section class="analyst-section">
+					<h3>Most Recent Analyst Grades</h3>
+					<div class="analyst-content">
+						<div class="analyst-list">
+							{#each analystGrades.slice(0, 10) as grade (grade.publishedDate + grade.gradingCompany)}
+								<div class="analyst-item">
+									<div class="analyst-logo">
+										<img
+											src={`https://logo.clearbit.com/${grade.gradingCompany.toLowerCase().replace(/\s+/g, '')}.com`}
+											alt={grade.gradingCompany}
+											onerror={(e) => { e.currentTarget.src = getAvatarFallback(grade.gradingCompany, '6366f1'); }}
+										/>
+									</div>
+									<div class="analyst-info">
+										<span class="analyst-name">{grade.gradingCompany}</span>
+										<span class="analyst-grade">{grade.newGrade}</span>
+									</div>
+								</div>
+							{/each}
+						</div>
+						<div class="grade-summary">
+							<h4>Grade Summary</h4>
+							{#each Object.entries(gradeSummary).slice(0, 6) as [grade, count]}
+								<div class="grade-row">
+									<span class="grade-name">{grade}</span>
+									<span class="grade-count">{count}</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+				</section>
+			{/if}
+
+			<!-- Price Target -->
+			{#if priceTarget}
+				<section class="price-target-section">
+					<h3>Price Target</h3>
+					<table class="price-target-table">
+						<tbody>
+							<tr><td>Target High</td><td>{formatCurrency(priceTarget.targetHigh)}</td></tr>
+							<tr><td>Target Low</td><td>{formatCurrency(priceTarget.targetLow)}</td></tr>
+							<tr><td>Target Median</td><td>{formatCurrency(priceTarget.targetMedian)}</td></tr>
+							<tr><td>Target Consensus</td><td>{formatCurrency(priceTarget.targetConsensus)}</td></tr>
+						</tbody>
+					</table>
+				</section>
+			{/if}
+
+			<!-- Institutional Ownership -->
+			{#if institutionalHolders.length > 0}
+				<section class="institutional-section">
+					<h3>Institutional Ownership</h3>
+					<div class="institutional-content">
+						<div class="holders-list">
+							{#each institutionalHolders.slice(0, 10) as holder (holder.holder)}
+								<div class="holder-item">
+									<div class="holder-logo">
+										<img
+											src={`https://logo.clearbit.com/${holder.holder.toLowerCase().replace(/[^a-z]/g, '')}.com`}
+											alt={holder.holder}
+											onerror={(e) => { e.currentTarget.src = getAvatarFallback(holder.holder, '374151'); }}
+										/>
+									</div>
+									<div class="holder-info">
+										<span class="holder-name">{holder.holder}</span>
+										<span class="holder-shares">{formatCompact(holder.shares)} Shares</span>
+										{#if holder.value}
+											<span class="holder-value">{formatCompact(holder.value)}</span>
+										{/if}
+									</div>
+								</div>
+							{/each}
+						</div>
+						<div class="institutional-summary">
+							<h4>Summary</h4>
+							<div class="summary-row">
+								<span>% Of Shares Owned</span>
+								<span>{institutionalSummary.percentOwned.toFixed(2)}%</span>
+							</div>
+							<div class="summary-row">
+								<span>Total Number Of Holders</span>
+								<span>{institutionalHolders.length.toLocaleString()}</span>
+							</div>
+							<p class="summary-note">Only Showing The Top {Math.min(institutionalHolders.length, 10)}</p>
+						</div>
+					</div>
+				</section>
+			{/if}
+
+			<!-- Congress Trades -->
+			{#if congressTrades.length > 0}
+				<section class="congress-section">
+					<h3>Latest Trades By Congress</h3>
+					<div class="congress-columns">
+						<div class="congress-column">
+							<h4>SENATE TRADES</h4>
+							{#each senateTrades.slice(0, 4) as trade (trade.id)}
+								<a href="/political/member/{encodeURIComponent(trade.officialName)}" class="congress-trade-item">
+									<img
+										src={getCongressPortrait(trade.officialName, trade.title)}
+										alt={trade.officialName}
+										class="congress-portrait"
+										onerror={(e) => { e.currentTarget.src = getAvatarFallback(trade.officialName); }}
+									/>
+									<div class="congress-trade-info">
+										<span class="congress-name">{trade.officialName}</span>
+										<span class="congress-type {trade.transactionType === 'BUY' ? 'purchase' : 'sale'}">
+											{trade.transactionType === 'BUY' ? 'Purchased' : 'Sale'}
+										</span>
+										<span class="congress-date">{formatTradeDate(trade.transactionDate)}</span>
+									</div>
+								</a>
+							{/each}
+						</div>
+						<div class="congress-column">
+							<h4>HOUSE TRADES</h4>
+							{#each houseTrades.slice(0, 4) as trade (trade.id)}
+								<a href="/political/member/{encodeURIComponent(trade.officialName)}" class="congress-trade-item">
+									<img
+										src={getCongressPortrait(trade.officialName, trade.title)}
+										alt={trade.officialName}
+										class="congress-portrait"
+										onerror={(e) => { e.currentTarget.src = getAvatarFallback(trade.officialName); }}
+									/>
+									<div class="congress-trade-info">
+										<span class="congress-name">{trade.officialName}</span>
+										<span class="congress-type {trade.transactionType === 'BUY' ? 'purchase' : 'sale'}">
+											{trade.transactionType === 'BUY' ? 'Purchased' : 'Sale'}
+										</span>
+										<span class="congress-date">{formatTradeDate(trade.transactionDate)}</span>
+									</div>
+								</a>
+							{/each}
+						</div>
+					</div>
+				</section>
+			{/if}
+
+			<!-- Sector Peers -->
+			{#if peers.length > 0}
+				<section class="peers-section">
+					<h3>Sectors Peers</h3>
+					<table class="peers-table">
+						<thead>
+							<tr>
+								<th>PEER</th>
+								<th>PRICE</th>
+								<th>MARKET CAP</th>
+								<th></th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each peers.slice(0, 10) as peer (peer)}
+								{@const peerData = peerQuotes[peer]}
+								<tr>
+									<td class="peer-cell">
+										<img
+											src={getCompanyLogoUrl(peer)}
+											alt={peer}
+											class="peer-logo"
+											onerror={(e) => { e.currentTarget.style.display = 'none'; }}
+										/>
+										<span class="peer-symbol">{peer}</span>
+									</td>
+									<td>{peerData?.price ? formatCurrency(peerData.price) : '--'}</td>
+									<td>{peerData?.marketCap ? formatCompact(peerData.marketCap) : '--'}</td>
+									<td>
+										<a href="/ticker/{peer}" class="compare-btn">Compare</a>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</section>
+			{/if}
+		</div>
 	</div>
 
 	{#if error}
-		<div class="error-banner">
-			{error}
-		</div>
+		<div class="error-banner">{error}</div>
 	{/if}
 </div>
 
@@ -1063,64 +1191,58 @@
 	.ticker-page {
 		max-width: 1400px;
 		margin: 0 auto;
-		padding: 0 1rem;
+		padding: 1rem;
+		font-family: 'IBM Plex Mono', monospace;
 	}
 
 	/* Header */
 	.ticker-header {
-		padding: 1.5rem 0;
-		border-bottom: 2px solid var(--color-border);
 		margin-bottom: 1.5rem;
 	}
 
-	.header-main {
+	.header-top {
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
-		gap: 1rem;
+		margin-bottom: 1rem;
 	}
 
 	.header-left {
 		display: flex;
-		align-items: baseline;
+		align-items: flex-start;
 		gap: 1rem;
-		flex-wrap: wrap;
+	}
+
+	.stock-logo {
+		width: 48px;
+		height: 48px;
+		object-fit: contain;
+	}
+
+	.header-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.symbol-row {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
 	}
 
 	.ticker-symbol {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 2rem;
+		font-size: 1.5rem;
 		font-weight: 700;
-		color: var(--color-ink);
 		margin: 0;
 	}
 
-	.company-name {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 1rem;
-		color: var(--color-ink-muted);
-	}
-
-	.sector-badge {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.625rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		padding: 4px 8px;
-		background: var(--color-newsprint-dark);
-		border: 1px solid var(--color-border);
-		color: var(--color-ink-muted);
-	}
-
 	.watchlist-btn {
-		font-family: 'IBM Plex Mono', monospace;
 		font-size: 0.75rem;
-		padding: 8px 16px;
+		padding: 6px 12px;
 		border: 1px solid var(--color-border);
 		background: var(--color-paper);
-		color: var(--color-ink);
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
 
 	.watchlist-btn:hover {
@@ -1128,302 +1250,145 @@
 	}
 
 	.watchlist-btn.in-watchlist {
-		background: var(--color-gain);
-		color: white;
-		border-color: var(--color-gain);
+		background: var(--color-ink);
+		color: var(--color-paper);
 	}
 
-	.price-display {
+	.company-row-info {
 		display: flex;
 		align-items: baseline;
-		gap: 1rem;
-		margin-top: 0.75rem;
-	}
-
-	.current-price {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 2rem;
-		font-weight: 700;
-		color: var(--color-ink);
-	}
-
-	.price-change {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 1.25rem;
-		font-weight: 600;
-	}
-
-	.live-indicator {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.625rem;
-		text-transform: uppercase;
-		color: var(--color-gain);
-	}
-
-	.quote-meta {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.75rem;
-		color: var(--color-ink-muted);
-		margin-top: 4px;
-	}
-
-	.price-loading {
-		height: 3rem;
-		background: var(--color-newsprint-dark);
-		animation: pulse 1.5s infinite;
-		margin-top: 0.75rem;
-		width: 200px;
-	}
-
-	/* Content Grid */
-	.content-grid {
-		display: grid;
-		grid-template-columns: 1fr 300px;
-		gap: 1.5rem;
-	}
-
-	/* Chart Section */
-	.chart-section {
-		grid-column: 1;
-		background: var(--color-paper);
-		border: 1px solid var(--color-border);
-		padding: 1rem;
-	}
-
-	.chart-section .section-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1rem;
-		padding-bottom: 0.75rem;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.chart-section .section-header h2 {
-		font-family: 'IBM Plex Mono', monospace;
+		gap: 0.5rem;
+		flex-wrap: wrap;
 		font-size: 0.875rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0;
-		color: var(--color-ink);
 	}
 
-	.indicator-toggles {
-		display: flex;
-		align-items: center;
-		gap: 0.25rem;
-	}
-
-	.indicator-btn {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.75rem;
-		font-weight: 600;
-		padding: 8px 14px;
-		border: 2px solid var(--color-ink);
-		background: transparent;
-		color: var(--color-ink);
-		cursor: pointer;
-		transition: all 0.15s ease;
-		min-width: 48px;
-	}
-
-	.indicator-btn:hover {
-		background: var(--color-ink);
-		color: var(--color-paper);
-	}
-
-	.indicator-btn.active {
-		background: var(--color-ink);
-		color: var(--color-paper);
-		border-color: var(--color-ink);
-	}
-
-	.indicator-divider {
-		width: 1px;
-		height: 20px;
-		background: var(--color-border);
-		margin: 0 0.5rem;
-	}
-
-	.chart-loading {
-		height: 360px;
-		background: var(--color-newsprint-dark);
-		animation: pulse 1.5s infinite;
-	}
-
-	.chart-empty {
-		height: 360px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: var(--color-newsprint-dark);
+	.company-name {
 		color: var(--color-ink-muted);
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.875rem;
+	}
+
+	.exchange-dot {
+		color: var(--color-ink-muted);
+	}
+
+	.exchange {
+		color: var(--color-ink-muted);
+	}
+
+	.price-inline {
+		font-weight: 600;
+		margin-left: 0.5rem;
 	}
 
 	.period-buttons {
 		display: flex;
-		gap: 0.375rem;
-		margin-top: 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid var(--color-border);
+		gap: 0;
+		border: 1px solid var(--color-border);
+		width: fit-content;
 	}
 
 	.period-btn {
-		font-family: 'IBM Plex Mono', monospace;
 		font-size: 0.75rem;
 		font-weight: 600;
-		padding: 10px 18px;
-		min-width: 48px;
-		border: 2px solid var(--color-ink);
-		background: transparent;
-		color: var(--color-ink);
+		padding: 8px 14px;
+		border: none;
+		border-right: 1px solid var(--color-border);
+		background: var(--color-paper);
 		cursor: pointer;
-		transition: all 0.15s ease;
+	}
+
+	.period-btn:last-child {
+		border-right: none;
 	}
 
 	.period-btn:hover {
-		background: var(--color-ink);
-		color: var(--color-paper);
+		background: var(--color-newsprint-dark);
 	}
 
 	.period-btn.active {
 		background: var(--color-ink);
 		color: var(--color-paper);
-		border-color: var(--color-ink);
 	}
 
-	/* Stats Sidebar */
-	.stats-sidebar {
-		grid-column: 2;
-		grid-row: 1;
+	/* Main Content */
+	.main-content {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 2rem;
 	}
 
-	.stats-card {
-		background: var(--color-paper);
+	@media (min-width: 1024px) {
+		.main-content {
+			grid-template-columns: 1fr 380px;
+		}
+	}
+
+	/* Left Column */
+	.left-column {
+		display: flex;
+		flex-direction: column;
+		gap: 2rem;
+	}
+
+	/* Chart Section */
+	.chart-section {
 		border: 1px solid var(--color-border);
+		padding: 1rem;
+		background: var(--color-paper);
 	}
 
-	.stats-card h3 {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.75rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0;
-		padding: 0.75rem 1rem;
-		background: var(--color-newsprint-dark);
-		border-bottom: 1px solid var(--color-border);
-		color: var(--color-ink);
+	.chart-container {
+		height: 300px;
+		position: relative;
 	}
 
-	.stats-table {
-		width: 100%;
-		border-collapse: collapse;
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.75rem;
-	}
-
-	.stats-table td {
-		padding: 0.5rem 0.75rem;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.stats-table td:first-child {
-		color: var(--color-ink-muted);
-		cursor: help;
-	}
-
-	.stats-table td:first-child:hover {
-		color: var(--color-ink);
-	}
-
-	.stats-table td:last-child {
-		text-align: right;
-		font-weight: 500;
-		color: var(--color-ink);
-	}
-
-	.stats-table tr:last-child td {
-		border-bottom: none;
-	}
-
-	.stats-loading {
+	.chart-loading {
 		height: 300px;
 		background: var(--color-newsprint-dark);
 		animation: pulse 1.5s infinite;
 	}
 
-	/* Section Rows */
-	.company-row,
-	.analyst-row,
-	.info-row {
-		grid-column: 1 / -1;
-		display: grid;
-		gap: 1.5rem;
+	.chart-empty {
+		height: 300px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--color-ink-muted);
 	}
 
-	.company-row {
-		grid-template-columns: 2fr 1fr;
+	/* Financial Sections */
+	.financial-section {
+		border-bottom: 1px dotted var(--color-border);
+		padding-bottom: 2rem;
 	}
 
-	.analyst-row {
-		grid-template-columns: 1fr 1fr;
-	}
-
-	.info-row {
-		grid-template-columns: 1fr 1fr 1fr;
-	}
-
-	/* Financials Section */
-	.financials-section {
-		grid-column: 1 / -1;
-	}
-
-	.financials-header {
+	.section-header-row {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		margin-bottom: 1rem;
 	}
 
-	.financials-header h2 {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 1rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
+	.section-header-row h2 {
+		font-size: 1.125rem;
+		font-weight: 700;
 		margin: 0;
-		color: var(--color-ink);
 	}
 
 	.period-toggle {
-		display: inline-flex;
-		border: 2px solid var(--color-ink);
-		border-radius: 4px;
-		overflow: hidden;
+		display: flex;
+		border: 1px solid var(--color-border);
 	}
 
 	.toggle-btn {
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.8125rem;
-		font-weight: 600;
-		padding: 10px 20px;
+		font-size: 0.75rem;
+		padding: 6px 12px;
 		border: none;
-		background: transparent;
-		color: var(--color-ink);
+		background: var(--color-paper);
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
 
 	.toggle-btn:first-child {
-		border-right: 2px solid var(--color-ink);
-	}
-
-	.toggle-btn:hover:not(.active) {
-		background: var(--color-newsprint-dark);
+		border-right: 1px solid var(--color-border);
 	}
 
 	.toggle-btn.active {
@@ -1431,232 +1396,581 @@
 		color: var(--color-paper);
 	}
 
-	.financial-tabs {
-		display: flex;
-		border-bottom: 2px solid var(--color-border);
-		margin-bottom: 0;
-		background: var(--color-paper);
-		border: 1px solid var(--color-border);
-		border-bottom: none;
+	.financial-table-wrapper {
+		overflow-x: auto;
 	}
 
-	.tab-btn {
-		flex: 1;
-		padding: 14px 20px;
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.8125rem;
+	.financial-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.75rem;
+	}
+
+	.financial-table th {
+		text-align: left;
+		padding: 0.75rem 0.5rem;
+		border-bottom: 1px dotted var(--color-border);
+		color: var(--color-ink-muted);
 		font-weight: 600;
+		font-size: 0.625rem;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		background: transparent;
-		border: none;
-		border-bottom: 3px solid transparent;
+	}
+
+	.financial-table td {
+		padding: 0.75rem 0.5rem;
+		border-bottom: 1px dotted var(--color-border);
+	}
+
+	.financial-table td.positive {
+		color: var(--color-gain);
+	}
+
+	.financial-table td.negative {
+		color: var(--color-loss);
+	}
+
+	.no-data {
 		color: var(--color-ink-muted);
-		cursor: pointer;
-		transition: all 0.15s ease;
+		font-size: 0.875rem;
+		padding: 2rem;
+		text-align: center;
 	}
 
-	.tab-btn:hover:not(.active) {
-		color: var(--color-ink);
-		background: var(--color-newsprint-dark);
+	/* Segments */
+	.segments-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+		gap: 1rem;
 	}
 
-	.tab-btn.active {
-		color: var(--color-ink);
-		border-bottom-color: var(--color-ink);
+	.segment-card {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		border: 1px solid var(--color-border);
 		background: var(--color-paper);
 	}
 
-	.tab-content {
-		border: 1px solid var(--color-border);
-		border-top: 2px solid var(--color-ink);
+	.segment-icon {
+		width: 24px;
+		height: 24px;
+		background: var(--color-newsprint-dark);
+		border-radius: 50%;
+	}
+
+	.segment-name {
+		font-size: 0.75rem;
+		font-weight: 500;
 	}
 
 	/* News Section */
 	.news-section {
-		grid-column: 1 / -1;
+		border-top: 1px dotted var(--color-border);
+		padding-top: 2rem;
 	}
 
-	/* Earnings and Analyst Row */
-	.earnings-analyst-row {
-		grid-column: 1 / -1;
-		display: grid;
-		grid-template-columns: 1fr 1fr;
+	.news-section h2 {
+		font-size: 1.125rem;
+		font-weight: 700;
+		margin: 0 0 1rem 0;
+	}
+
+	.news-list {
+		display: flex;
+		flex-direction: column;
 		gap: 1.5rem;
 	}
 
-	/* Scorecard and Segments Row */
-	.scorecard-segments-row {
-		grid-column: 1 / -1;
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1.5rem;
+	.news-item {
+		border-bottom: 1px dotted var(--color-border);
+		padding-bottom: 1.5rem;
 	}
 
-	/* Insider and Filings Row */
-	.insider-filings-row {
-		grid-column: 1 / -1;
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1.5rem;
-	}
-
-	/* Dividends Section */
-	.dividends-section {
-		grid-column: 1 / -1;
-	}
-
-	/* Congress Section */
-	.congress-section {
-		grid-column: 1 / -1;
-	}
-
-	.section-card {
-		background: var(--color-paper);
-		border: 1px solid var(--color-border);
-	}
-
-	.section-card .section-header {
-		padding: 0.75rem 1rem;
-		background: var(--color-newsprint-dark);
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.section-card .section-header h2 {
-		font-family: 'IBM Plex Mono', monospace;
+	.news-date {
 		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+		display: block;
+		margin-bottom: 0.5rem;
+	}
+
+	.news-title {
+		font-size: 0.875rem;
 		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0;
-		color: var(--color-ink);
+		margin: 0 0 0.5rem 0;
+		line-height: 1.4;
 	}
 
-	.congress-table-wrapper {
-		overflow-x: auto;
+	.news-link {
+		font-size: 0.75rem;
+		color: var(--color-gain);
+		text-decoration: none;
 	}
 
-	.congress-table {
+	.news-link:hover {
+		text-decoration: underline;
+	}
+
+	/* Right Column (Sidebar) */
+	.right-column {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+
+	.right-column section {
+		border-bottom: 1px dotted var(--color-border);
+		padding-bottom: 1.5rem;
+	}
+
+	.right-column h3 {
+		font-size: 0.875rem;
+		font-weight: 700;
+		margin: 0 0 1rem 0;
+	}
+
+	/* Stats Section */
+	.stats-table {
 		width: 100%;
-		border-collapse: collapse;
-		font-family: 'IBM Plex Mono', monospace;
+		font-size: 0.8125rem;
+	}
+
+	.stats-table td {
+		padding: 0.5rem 0;
+		border-bottom: 1px dotted var(--color-border);
+	}
+
+	.stats-table td:first-child {
+		color: var(--color-ink-muted);
+	}
+
+	.stats-table td:last-child {
+		text-align: right;
+		font-weight: 600;
+	}
+
+	/* About Section */
+	.about-section .website-link {
+		display: block;
+		font-size: 0.75rem;
+		color: var(--color-gain);
+		text-decoration: none;
+		margin-bottom: 0.75rem;
+	}
+
+	.about-section .description {
+		font-size: 0.8125rem;
+		line-height: 1.5;
+		color: var(--color-ink-muted);
+		margin: 0;
+	}
+
+	/* CEO Section */
+	.ceo-section {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.ceo-portrait-container {
+		width: 120px;
+		height: 140px;
+		border: 1px solid var(--color-border);
+		overflow: hidden;
+	}
+
+	.ceo-portrait {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.ceo-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.ceo-title {
+		font-size: 0.75rem;
+		font-weight: 700;
+		text-transform: uppercase;
+	}
+
+	.ceo-name {
+		font-size: 0.875rem;
+	}
+
+	.view-insiders-btn {
+		font-size: 0.75rem;
+		padding: 6px 12px;
+		border: 1px solid var(--color-border);
+		background: var(--color-paper);
+		text-decoration: none;
+		color: inherit;
+		width: fit-content;
+		margin-top: 0.5rem;
+	}
+
+	.compensation-section h4 {
+		font-size: 0.75rem;
+		font-weight: 700;
+		margin: 1rem 0 0.5rem 0;
+	}
+
+	.compensation-table {
+		width: 100%;
 		font-size: 0.75rem;
 	}
 
-	.congress-table th,
-	.congress-table td {
-		padding: 0.75rem;
-		text-align: left;
-		border-bottom: 1px solid var(--color-border);
+	.compensation-table td {
+		padding: 0.375rem 0;
+		border-bottom: 1px dotted var(--color-border);
 	}
 
-	.congress-table th {
+	.compensation-table td:last-child {
+		text-align: right;
 		font-weight: 600;
+	}
+
+	/* Info Table */
+	.info-table {
+		width: 100%;
+		font-size: 0.8125rem;
+	}
+
+	.info-table td {
+		padding: 0.5rem 0;
+		border-bottom: 1px dotted var(--color-border);
+	}
+
+	.info-table td:first-child {
+		color: var(--color-ink-muted);
+	}
+
+	.info-table td:last-child {
+		text-align: right;
+		font-weight: 600;
+	}
+
+	/* Splits */
+	.splits-table {
+		width: 100%;
+		font-size: 0.75rem;
+	}
+
+	.splits-table th {
+		text-align: left;
+		padding: 0.5rem 0;
+		border-bottom: 1px dotted var(--color-border);
 		color: var(--color-ink-muted);
 		font-size: 0.625rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		font-weight: 600;
 	}
 
-	.official-link {
+	.splits-table td {
+		padding: 0.5rem 0;
+		border-bottom: 1px dotted var(--color-border);
+	}
+
+	.split-type {
+		color: var(--color-gain);
+	}
+
+	/* Ratings */
+	.rating-display {
+		margin-bottom: 1rem;
+	}
+
+	.rating-label {
+		color: var(--color-ink-muted);
+	}
+
+	.rating-value {
+		font-weight: 700;
+		margin-left: 0.5rem;
+	}
+
+	.ratings-detail-table {
+		width: 100%;
+		font-size: 0.75rem;
+	}
+
+	.ratings-detail-table td {
+		padding: 0.375rem 0;
+		border-bottom: 1px dotted var(--color-border);
+	}
+
+	.ratings-detail-table td:last-child {
+		text-align: right;
+		font-weight: 600;
+	}
+
+	.ratings-detail-table tr.overall td {
+		font-weight: 700;
+	}
+
+	/* Analyst Grades */
+	.analyst-content {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+
+	.analyst-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.analyst-item {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
+	}
+
+	.analyst-logo {
+		width: 32px;
+		height: 32px;
+		border: 1px solid var(--color-border);
+		overflow: hidden;
+	}
+
+	.analyst-logo img {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+	}
+
+	.analyst-info {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.analyst-name {
+		font-size: 0.75rem;
+		font-weight: 600;
+	}
+
+	.analyst-grade {
+		font-size: 0.6875rem;
+		color: var(--color-ink-muted);
+	}
+
+	.grade-summary h4 {
+		font-size: 0.75rem;
+		font-weight: 700;
+		margin: 0 0 0.5rem 0;
+	}
+
+	.grade-row {
+		display: flex;
+		justify-content: space-between;
+		font-size: 0.75rem;
+		padding: 0.25rem 0;
+	}
+
+	/* Price Target */
+	.price-target-table {
+		width: 100%;
+		font-size: 0.8125rem;
+	}
+
+	.price-target-table td {
+		padding: 0.5rem 0;
+		border-bottom: 1px dotted var(--color-border);
+	}
+
+	.price-target-table td:last-child {
+		text-align: right;
+		font-weight: 600;
+	}
+
+	/* Institutional */
+	.institutional-content {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+
+	.holders-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.holder-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+	}
+
+	.holder-logo {
+		width: 32px;
+		height: 32px;
+		border: 1px solid var(--color-border);
+		overflow: hidden;
+		flex-shrink: 0;
+	}
+
+	.holder-logo img {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+	}
+
+	.holder-info {
+		display: flex;
+		flex-direction: column;
+		font-size: 0.6875rem;
+	}
+
+	.holder-name {
+		font-weight: 600;
+		font-size: 0.75rem;
+	}
+
+	.holder-shares,
+	.holder-value {
+		color: var(--color-ink-muted);
+	}
+
+	.institutional-summary h4 {
+		font-size: 0.75rem;
+		font-weight: 700;
+		margin: 0 0 0.5rem 0;
+	}
+
+	.summary-row {
+		display: flex;
+		justify-content: space-between;
+		font-size: 0.75rem;
+		padding: 0.25rem 0;
+	}
+
+	.summary-row span:last-child {
+		font-weight: 600;
+	}
+
+	.summary-note {
+		font-size: 0.6875rem;
+		color: var(--color-ink-muted);
+		margin-top: 0.5rem;
+	}
+
+	/* Congress Trades */
+	.congress-columns {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+
+	.congress-column h4 {
+		font-size: 0.625rem;
+		font-weight: 600;
+		color: var(--color-ink-muted);
+		margin: 0 0 0.75rem 0;
+		letter-spacing: 0.05em;
+	}
+
+	.congress-trade-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
 		text-decoration: none;
 		color: inherit;
+		margin-bottom: 0.75rem;
 	}
 
-	.official-link:hover {
-		background: var(--color-newsprint-dark);
-	}
-
-	.official-portrait {
+	.congress-portrait {
 		width: 40px;
 		height: 48px;
 		object-fit: cover;
 		border: 1px solid var(--color-border);
-		background: var(--color-newsprint-dark);
 	}
 
-	.official-info {
+	.congress-trade-info {
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		font-size: 0.75rem;
 	}
 
-	.official-name {
+	.congress-name {
 		font-weight: 600;
-		color: var(--color-ink);
 	}
 
-	.official-title {
-		font-size: 0.625rem;
-		color: var(--color-ink-muted);
+	.congress-type {
+		font-size: 0.6875rem;
 	}
 
-	.party-badge {
-		display: inline-block;
-		padding: 1px 4px;
-		border-radius: 2px;
-		font-size: 0.5rem;
-		font-weight: 600;
-		margin-left: 4px;
-	}
-
-	.trade-type {
-		display: inline-block;
-		padding: 2px 8px;
-		font-size: 0.625rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		background: var(--color-newsprint-dark);
-	}
-
-	.trade-type.buy {
-		background: rgba(13, 122, 62, 0.1);
+	.congress-type.purchase {
 		color: var(--color-gain);
 	}
 
-	.trade-type.sell {
-		background: rgba(196, 30, 58, 0.1);
+	.congress-type.sale {
 		color: var(--color-loss);
 	}
 
-	.trade-amount {
-		font-weight: 600;
-		white-space: nowrap;
-	}
-
-	.trade-date {
+	.congress-date {
+		font-size: 0.6875rem;
 		color: var(--color-ink-muted);
-		white-space: nowrap;
 	}
 
-	.congress-more {
-		padding: 0.75rem;
-		text-align: center;
-		border-top: 1px solid var(--color-border);
-	}
-
-	.congress-more a {
-		font-family: 'IBM Plex Mono', monospace;
+	/* Peers */
+	.peers-table {
+		width: 100%;
 		font-size: 0.75rem;
-		color: var(--color-accent);
+	}
+
+	.peers-table th {
+		text-align: left;
+		padding: 0.5rem 0;
+		border-bottom: 1px dotted var(--color-border);
+		color: var(--color-ink-muted);
+		font-size: 0.625rem;
+		font-weight: 600;
+	}
+
+	.peers-table td {
+		padding: 0.5rem 0;
+		border-bottom: 1px dotted var(--color-border);
+	}
+
+	.peer-cell {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.peer-logo {
+		width: 20px;
+		height: 20px;
+		object-fit: contain;
+	}
+
+	.peer-symbol {
+		font-weight: 600;
+	}
+
+	.compare-btn {
+		font-size: 0.6875rem;
+		padding: 4px 8px;
+		border: 1px solid var(--color-border);
 		text-decoration: none;
+		color: inherit;
 	}
 
-	.congress-more a:hover {
-		text-decoration: underline;
+	.compare-btn:hover {
+		background: var(--color-newsprint-dark);
 	}
 
-	/* Error Banner */
+	/* Error */
 	.error-banner {
 		padding: 1rem;
 		background: rgba(196, 30, 58, 0.1);
 		border: 1px solid var(--color-loss);
 		color: var(--color-loss);
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.875rem;
 		margin-top: 1.5rem;
 	}
 
@@ -1666,91 +1980,25 @@
 		50% { opacity: 0.5; }
 	}
 
-	/* Responsive */
-	@media (max-width: 1024px) {
-		.content-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.chart-section {
-			grid-column: 1;
-		}
-
-		.stats-sidebar {
-			grid-column: 1;
-			grid-row: auto;
-		}
-
-		.company-row,
-		.analyst-row {
-			grid-template-columns: 1fr;
-		}
-
-		.info-row {
-			grid-template-columns: 1fr 1fr;
-		}
-	}
-
+	/* Mobile */
 	@media (max-width: 640px) {
-		.info-row,
-		.earnings-analyst-row,
-		.scorecard-segments-row,
-		.insider-filings-row {
-			grid-template-columns: 1fr;
-		}
-
-		.header-main {
-			flex-direction: column;
-		}
-
-		.chart-section .section-header {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 0.75rem;
-		}
-
-		.indicator-toggles {
-			flex-wrap: wrap;
-			gap: 0.375rem;
-			width: 100%;
-		}
-
-		.indicator-btn {
-			flex: 1;
-			min-width: 50px;
-			padding: 8px 6px;
-			font-size: 0.6875rem;
-		}
-
-		.indicator-divider {
-			display: none;
-		}
-
 		.period-buttons {
 			flex-wrap: wrap;
 		}
 
 		.period-btn {
-			flex: 1;
-			min-width: 40px;
-			padding: 10px 8px;
+			padding: 6px 10px;
+			font-size: 0.6875rem;
 		}
 
-		.financial-tabs {
-			flex-direction: column;
+		.financial-table {
+			font-size: 0.6875rem;
 		}
 
-		.tab-btn {
-			border-bottom: 1px solid var(--color-border);
-			border-right: none;
-			padding: 12px 16px;
-			text-align: left;
-		}
-
-		.tab-btn.active {
-			border-left: 3px solid var(--color-ink);
-			border-bottom-color: var(--color-border);
-			background: var(--color-newsprint-dark);
+		.analyst-content,
+		.institutional-content,
+		.congress-columns {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

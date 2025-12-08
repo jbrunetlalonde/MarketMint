@@ -32,6 +32,7 @@ export const api = {
 	getBulkQuotes: quotesApi.getBulkQuotes,
 	getHistory: quotesApi.getHistory,
 	getMovers: quotesApi.getMovers,
+	getSectorPerformance: quotesApi.getSectorPerformance,
 
 	// Watchlist
 	getWatchlist: watchlistApi.getWatchlist,

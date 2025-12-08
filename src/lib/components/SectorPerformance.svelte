@@ -1,46 +1,39 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { quotes } from '$lib/stores/quotes.svelte';
+	import api from '$lib/utils/api';
 	import { formatPercent } from '$lib/utils/formatters';
 
-	const SECTOR_ETFS = [
-		{ ticker: 'XLK', name: 'Technology' },
-		{ ticker: 'XLV', name: 'Healthcare' },
-		{ ticker: 'XLF', name: 'Financials' },
-		{ ticker: 'XLE', name: 'Energy' },
-		{ ticker: 'XLI', name: 'Industrials' },
-		{ ticker: 'XLP', name: 'Staples' },
-		{ ticker: 'XLY', name: 'Discretionary' },
-		{ ticker: 'XLU', name: 'Utilities' },
-		{ ticker: 'XLB', name: 'Materials' },
-		{ ticker: 'XLRE', name: 'Real Estate' },
-		{ ticker: 'XLC', name: 'Comms' }
-	];
+	interface SectorData {
+		sector: string;
+		changePercent: number;
+	}
 
 	let loading = $state(true);
+	let sectorData = $state<SectorData[]>([]);
+	let error = $state<string | null>(null);
 
-	const sectorData = $derived(
-		SECTOR_ETFS.map((sector) => {
-			const quote = quotes.getQuote(sector.ticker);
-			return {
-				...sector,
-				changePercent: quote?.changePercent ?? null,
-				price: quote?.price ?? null
-			};
-		})
-			.filter((s) => s.changePercent !== null)
-			.sort((a, b) => (b.changePercent ?? 0) - (a.changePercent ?? 0))
+	const sortedData = $derived(
+		[...sectorData].sort((a, b) => b.changePercent - a.changePercent)
 	);
 
 	const maxAbsChange = $derived(
-		Math.max(...sectorData.map((s) => Math.abs(s.changePercent ?? 0)), 1)
+		Math.max(...sortedData.map((s) => Math.abs(s.changePercent)), 1)
 	);
 
 	onMount(async () => {
-		const tickers = SECTOR_ETFS.map((s) => s.ticker);
-		await quotes.fetchBulkQuotes(tickers);
-		quotes.subscribeMany(tickers);
-		loading = false;
+		try {
+			const response = await api.getSectorPerformance();
+			if (response.success && response.data) {
+				sectorData = response.data;
+			} else if (response.error) {
+				error = response.error.message;
+			}
+		} catch (err) {
+			error = 'Failed to load sector data';
+			console.error('Sector performance error:', err);
+		} finally {
+			loading = false;
+		}
 	});
 </script>
 
@@ -51,15 +44,17 @@
 				<div class="skeleton-row"></div>
 			{/each}
 		</div>
-	{:else if sectorData.length === 0}
+	{:else if error}
+		<p class="error-msg">{error}</p>
+	{:else if sortedData.length === 0}
 		<p class="no-data">No sector data available</p>
 	{:else}
 		<div class="sector-list">
-			{#each sectorData as sector (sector.ticker)}
-				{@const isPositive = (sector.changePercent ?? 0) >= 0}
-				{@const barWidth = Math.abs((sector.changePercent ?? 0) / maxAbsChange) * 100}
-				<a href="/ticker/{sector.ticker}" class="sector-row">
-					<span class="sector-name">{sector.name}</span>
+			{#each sortedData as sector (sector.sector)}
+				{@const isPositive = sector.changePercent >= 0}
+				{@const barWidth = Math.abs(sector.changePercent / maxAbsChange) * 100}
+				<div class="sector-row">
+					<span class="sector-name">{sector.sector}</span>
 					<div class="bar-container">
 						<div
 							class="bar"
@@ -69,9 +64,9 @@
 						></div>
 					</div>
 					<span class="sector-change" class:positive={isPositive} class:negative={!isPositive}>
-						{sector.changePercent !== null ? formatPercent(sector.changePercent) : '--'}
+						{formatPercent(sector.changePercent)}
 					</span>
-				</a>
+				</div>
 			{/each}
 		</div>
 	{/if}
@@ -105,11 +100,16 @@
 		}
 	}
 
-	.no-data {
+	.no-data,
+	.error-msg {
 		font-size: 0.75rem;
 		color: var(--color-ink-muted);
 		text-align: center;
 		padding: 1rem 0;
+	}
+
+	.error-msg {
+		color: var(--color-loss);
 	}
 
 	.sector-list {
@@ -120,18 +120,11 @@
 
 	.sector-row {
 		display: grid;
-		grid-template-columns: 80px 1fr 50px;
+		grid-template-columns: 90px 1fr 50px;
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.25rem 0;
-		text-decoration: none;
-		color: inherit;
-		transition: background-color 0.1s;
 		border-radius: 2px;
-	}
-
-	.sector-row:hover {
-		background-color: var(--color-newsprint-dark);
 	}
 
 	.sector-name {

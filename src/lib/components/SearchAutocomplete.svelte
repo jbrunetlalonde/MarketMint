@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import api from '$lib/utils/api';
+	import { getCompanyLogoUrl } from '$lib/utils/urls';
 
 	interface SearchResult {
 		symbol: string;
@@ -217,6 +218,16 @@
 								onmousedown={() => selectResult(result)}
 								onmouseenter={() => (selectedIndex = index)}
 							>
+								<img
+									src={getCompanyLogoUrl(result.symbol)}
+									alt=""
+									class="result-logo"
+									loading="lazy"
+									onerror={(e) => {
+										const img = e.currentTarget as HTMLImageElement;
+										img.style.display = 'none';
+									}}
+								/>
 								<span class="result-symbol">{result.symbol}</span>
 								<span class="result-name">{result.name}</span>
 								<span class="result-exchange">{result.exchange}</span>
@@ -355,6 +366,15 @@
 		background-color: var(--color-newsprint-dark);
 	}
 
+	.result-logo {
+		width: 24px;
+		height: 24px;
+		object-fit: contain;
+		border-radius: 4px;
+		background: var(--color-paper);
+		flex-shrink: 0;
+	}
+
 	.result-symbol {
 		font-weight: 700;
 		color: var(--color-ink);
@@ -413,6 +433,11 @@
 	.compact .search-result {
 		padding: 0.5rem 0.75rem;
 		font-size: 0.75rem;
+	}
+
+	.compact .result-logo {
+		width: 18px;
+		height: 18px;
 	}
 
 	.compact .result-symbol {

@@ -23,17 +23,28 @@
 		isMock?: boolean;
 	}
 
+	const BATCH_SIZE = 50;
+
 	let { data }: { data: PageData } = $props();
 	const { config } = data;
 
 	let trades = $state<PoliticalTrade[]>([]);
 	let loading = $state(true);
+	let loadingMore = $state(false);
 	let error = $state<string | null>(null);
+	let offset = $state(0);
+	let hasMore = $state(true);
 
 	let filterParty = $state('all');
 	let filterType = $state('all');
 	let filterTicker = $state('');
+	let filterMember = $state('');
 	let viewMode = $state<'table' | 'cards'>('cards');
+	let lastUpdated = $state<Date | null>(null);
+
+	function getAvatarFallback(name: string): string {
+		return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=374151`;
+	}
 
 	function matchesChamber(title: string | null | undefined): boolean {
 		if (!title) return false;
@@ -60,6 +71,11 @@
 		if (filterTicker.trim()) {
 			const search = filterTicker.trim().toUpperCase();
 			result = result.filter((t) => t.ticker.toUpperCase().includes(search));
+		}
+
+		if (filterMember.trim()) {
+			const search = filterMember.trim().toLowerCase();
+			result = result.filter((t) => t.officialName.toLowerCase().includes(search));
 		}
 
 		return result;
@@ -99,14 +115,31 @@
 		};
 	});
 
-	async function fetchTrades() {
-		loading = true;
+	async function fetchTrades(append = false) {
+		if (append) {
+			loadingMore = true;
+		} else {
+			loading = true;
+			offset = 0;
+			trades = [];
+		}
 		error = null;
 
 		try {
-			const response = await api.getPoliticalTrades({ chamber: config.chamber, limit: 200 });
+			const response = await api.getPoliticalTrades({
+				chamber: config.chamber,
+				limit: BATCH_SIZE,
+				offset: append ? offset : 0
+			});
 			if (response.success && response.data) {
-				trades = response.data;
+				if (append) {
+					trades = [...trades, ...response.data];
+				} else {
+					trades = response.data;
+				}
+				hasMore = response.pagination?.hasMore ?? response.data.length === BATCH_SIZE;
+				offset = (append ? offset : 0) + response.data.length;
+				lastUpdated = new Date();
 			} else {
 				error = `Failed to load ${config.title} trades`;
 			}
@@ -114,7 +147,12 @@
 			error = err instanceof Error ? err.message : 'Failed to load trades';
 		} finally {
 			loading = false;
+			loadingMore = false;
 		}
+	}
+
+	function loadMore() {
+		fetchTrades(true);
 	}
 
 	function getPortraitUrl(name: string): string {
@@ -192,6 +230,16 @@
 		<div class="card mb-4">
 			<div class="flex gap-4 flex-wrap items-end">
 				<div>
+					<label for="filter-member" class="byline block mb-1">Member Name</label>
+					<input
+						type="text"
+						id="filter-member"
+						bind:value={filterMember}
+						placeholder="Search by name..."
+						class="input"
+					/>
+				</div>
+				<div>
 					<label for="filter-party" class="byline block mb-1">Party</label>
 					<select id="filter-party" bind:value={filterParty} class="input">
 						<option value="all">All Parties</option>
@@ -217,7 +265,7 @@
 						class="input"
 					/>
 				</div>
-				<button onclick={fetchTrades} class="btn btn-secondary" disabled={loading}>
+				<button onclick={() => fetchTrades()} class="btn btn-secondary" disabled={loading}>
 					{loading ? 'Loading...' : 'Refresh'}
 				</button>
 
@@ -238,6 +286,11 @@
 					</button>
 				</div>
 			</div>
+			{#if lastUpdated}
+				<div class="text-xs text-ink-muted mt-3 pt-3 border-t border-ink-light">
+					Last updated: {lastUpdated.toLocaleTimeString()} ({lastUpdated.toLocaleDateString()})
+				</div>
+			{/if}
 		</div>
 
 		{#if loading && trades.length === 0}
@@ -283,7 +336,11 @@
 											class="w-10 h-12 object-contain border border-ink-light bg-newsprint flex-shrink-0"
 											loading="lazy"
 											decoding="async"
-											onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+											onerror={(e) => {
+												const img = e.currentTarget as HTMLImageElement;
+												img.onerror = null;
+												img.src = getAvatarFallback(trade.officialName);
+											}}
 										/>
 										<div>
 											<a href="/political/member/{encodeURIComponent(trade.officialName)}" class="font-semibold hover:underline">{trade.officialName}</a>
@@ -320,6 +377,21 @@
 						{/each}
 					</tbody>
 				</table>
+			</div>
+		{/if}
+
+		{#if hasMore && filteredTrades.length > 0}
+			<div class="text-center mt-6">
+				<button
+					onclick={loadMore}
+					class="btn btn-primary"
+					disabled={loadingMore}
+				>
+					{loadingMore ? 'Loading...' : 'Load More Trades'}
+				</button>
+				<p class="text-xs text-ink-muted mt-2">
+					Showing {filteredTrades.length} trades
+				</p>
 			</div>
 		{/if}
 	</section>

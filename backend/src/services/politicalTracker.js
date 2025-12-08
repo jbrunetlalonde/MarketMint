@@ -814,6 +814,72 @@ export function getCacheStats() {
   };
 }
 
+// Sync all officials from FMP by fetching multiple pages of trades
+export async function syncAllOfficials() {
+  const pagesToFetch = 50; // Fetch 50 pages of 100 trades each = 5000 trades per chamber
+  const officialMap = new Map();
+  let totalTrades = 0;
+  const errors = [];
+
+  // Fetch multiple pages from both chambers
+  for (let page = 0; page < pagesToFetch; page++) {
+    try {
+      const [senateTrades, houseTrades] = await Promise.all([
+        fmp.getSenateTradesLatest(page, 100),
+        fmp.getHouseTradesLatest(page, 100)
+      ]);
+
+      const allTrades = [
+        ...senateTrades.map(t => transformFMPTrade(t, 'senate')),
+        ...houseTrades.map(t => transformFMPTrade(t, 'house'))
+      ];
+
+      totalTrades += allTrades.length;
+
+      // Extract unique officials
+      for (const trade of allTrades) {
+        if (trade.officialName && !officialMap.has(trade.officialName)) {
+          officialMap.set(trade.officialName, {
+            name: trade.officialName,
+            title: trade.position,
+            party: trade.party,
+            state: trade.state,
+            district: trade.district
+          });
+        }
+      }
+
+      // Save trades to DB
+      if (allTrades.length > 0) {
+        await saveBulkTrades(allTrades);
+      }
+
+      // If we got fewer trades than requested, we've reached the end
+      if (senateTrades.length < 100 && houseTrades.length < 100) {
+        break;
+      }
+
+      // Rate limit: wait between pages
+      await new Promise(resolve => setTimeout(resolve, 200));
+    } catch (err) {
+      errors.push({ page, error: err.message });
+    }
+  }
+
+  // Bulk upsert all officials
+  const officials = [...officialMap.values()];
+  if (officials.length > 0) {
+    await upsertBulkOfficials(officials);
+  }
+
+  return {
+    officialsFound: officials.length,
+    tradesProcessed: totalTrades,
+    pagesProcessed: pagesToFetch,
+    errors
+  };
+}
+
 export default {
   getCongressionalTrades,
   getRecentTrades,
@@ -830,5 +896,6 @@ export default {
   upsertOfficial,
   upsertBulkOfficials,
   saveTradeToDB,
-  saveBulkTrades
+  saveBulkTrades,
+  syncAllOfficials
 };

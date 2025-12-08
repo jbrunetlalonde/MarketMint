@@ -337,4 +337,20 @@ router.get('/cache-stats', (req, res) => {
   });
 });
 
+/**
+ * POST /api/political/sync-officials
+ * Sync all officials from FMP trades (fetches multiple pages)
+ */
+router.post('/sync-officials', async (req, res, next) => {
+  try {
+    const result = await politicalTracker.syncAllOfficials();
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

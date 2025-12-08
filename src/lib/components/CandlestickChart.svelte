@@ -125,9 +125,12 @@
 
 		const colors = getColors();
 
+		// Use container's computed height from CSS, fallback to prop
+		const computedHeight = chartContainer.clientHeight || height;
+
 		chart = createChart(chartContainer, {
 			width: chartContainer.clientWidth,
-			height: height,
+			height: computedHeight,
 			layout: {
 				background: { type: ColorType.Solid, color: colors.background },
 				textColor: colors.textColor,
@@ -347,7 +350,11 @@
 
 	function handleResize() {
 		if (chart && chartContainer) {
-			chart.applyOptions({ width: chartContainer.clientWidth });
+			const computedHeight = chartContainer.clientHeight || height;
+			chart.applyOptions({
+				width: chartContainer.clientWidth,
+				height: computedHeight
+			});
 		}
 	}
 
@@ -377,11 +384,27 @@
 	});
 </script>
 
-<div class="chart-wrapper" bind:this={chartContainer} style="height: {height}px;"></div>
+<div class="chart-wrapper" bind:this={chartContainer}></div>
 
 <style>
 	.chart-wrapper {
 		width: 100%;
 		position: relative;
+		min-height: 300px;
+		height: clamp(300px, 40vh, 500px);
+	}
+
+	@media (min-width: 768px) {
+		.chart-wrapper {
+			min-height: 350px;
+			height: clamp(350px, 42vh, 550px);
+		}
+	}
+
+	@media (min-width: 1200px) {
+		.chart-wrapper {
+			min-height: 400px;
+			height: clamp(400px, 45vh, 600px);
+		}
 	}
 </style>

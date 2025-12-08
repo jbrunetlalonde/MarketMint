@@ -10,10 +10,10 @@
 export function getPortraitBase(): string {
 	if (typeof window !== 'undefined') {
 		// Client-side: check for env var or use API base
-		return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:5001';
+		return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:3001';
 	}
 	// Server-side
-	return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:5001';
+	return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:3001';
 }
 
 /**
@@ -39,14 +39,113 @@ export function getCeoPortraitUrl(name: string): string {
 	return getPortraitUrl(`/portraits/${filename}`);
 }
 
+// Common nickname mappings for first names
+const NICKNAME_MAP: Record<string, string> = {
+	thomas: 'tom',
+	william: 'bill',
+	richard: 'rick',
+	robert: 'bob',
+	james: 'jim',
+	michael: 'mike',
+	christopher: 'chris',
+	daniel: 'dan',
+	benjamin: 'ben',
+	joseph: 'joe',
+	steven: 'steve',
+	stephen: 'steve',
+	timothy: 'tim',
+	gregory: 'greg',
+	anthony: 'tony',
+	nicholas: 'nick',
+	kenneth: 'ken',
+	edward: 'ed',
+	theodore: 'ted',
+	gerald: 'jerry',
+	lawrence: 'larry',
+	raymond: 'ray',
+	francis: 'frank',
+	charles: 'chuck',
+	elizabeth: 'liz',
+	jennifer: 'jen',
+	katherine: 'kate',
+	catherine: 'cathy',
+	jacqueline: 'jackie',
+	margaret: 'peggy',
+	patricia: 'pat',
+	deborah: 'debbie',
+	cynthia: 'cindy',
+	virginia: 'ginny',
+	suzanne: 'suzy'
+};
+
+/**
+ * Normalize a Congress member name to match portrait filename convention
+ * Handles middle initials, suffixes, and nicknames
+ * Uses full name approach but removes single-letter initials
+ * "Adam B Schiff" -> "adam-schiff"
+ * "Shelley Moore Capito" -> "shelley-moore-capito"
+ * "John W. Hickenlooper" -> "john-hickenlooper"
+ * "James Conley Justice, II" -> "james-conley-justice"
+ */
+function normalizeCongressName(name: string): string {
+	// Remove content in quotes (nicknames)
+	let cleaned = name.replace(/"[^"]*"/g, '').replace(/\([^)]*\)/g, '');
+
+	// Remove common suffixes
+	cleaned = cleaned.replace(/,?\s*(Jr\.?|Sr\.?|II|III|IV|Hon\.?|Dr\.?)$/gi, '');
+
+	// Split into parts and filter out empty
+	const parts = cleaned.trim().split(/\s+/).filter(Boolean);
+
+	if (parts.length === 0) return name.toLowerCase().replace(/\s+/g, '-');
+
+	// Filter out single-letter initials (like B., W., S.)
+	const nameParts = parts.filter((part) => {
+		// Keep parts that are longer than 2 chars or don't look like initials
+		return part.length > 2 || !/^[A-Z]\.?$/.test(part);
+	});
+
+	// Clean each part and join with hyphens
+	const result = nameParts
+		.map((part, index) => {
+			const cleaned = part.toLowerCase().replace(/[^a-z-]/g, '');
+			// Apply nickname mapping only to first name
+			if (index === 0 && NICKNAME_MAP[cleaned]) {
+				return NICKNAME_MAP[cleaned];
+			}
+			return cleaned;
+		})
+		.filter(Boolean)
+		.join('-');
+
+	return result;
+}
+
 /**
  * Get portrait URL for a Congress member
  * @param name - Member name (e.g., "Nancy Pelosi")
  * @param chamber - "senate" or "house"
  */
 export function getCongressPortraitUrl(name: string, chamber: 'senate' | 'house'): string {
-	const filename = name.toLowerCase().replace(/\s+/g, '-');
+	const filename = normalizeCongressName(name);
 	return getPortraitUrl(`/portraits/${chamber}-${filename}.png`);
+}
+
+/**
+ * Get DiceBear avatar URL as fallback for missing portraits
+ * @param name - Person's name to generate avatar from
+ * @param backgroundColor - Background color hex (without #)
+ */
+export function getAvatarFallback(name: string, backgroundColor: string = '374151'): string {
+	return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=${backgroundColor}`;
+}
+
+/**
+ * Get company logo URL from FMP
+ * @param symbol - Stock ticker symbol
+ */
+export function getCompanyLogoUrl(symbol: string): string {
+	return `https://financialmodelingprep.com/image-stock/${symbol.toUpperCase()}.png`;
 }
 
 /**

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatCompact, formatCurrency } from '$lib/utils/formatters';
+	import { getAvatarFallback } from '$lib/utils/urls';
 
 	interface Executive {
 		name: string;
@@ -14,13 +15,26 @@
 	interface Props {
 		executives: Executive[];
 		ceoPortrait?: string;
+		companyImage?: string;
 		loading?: boolean;
 	}
 
-	let { executives, ceoPortrait, loading = false }: Props = $props();
+	let { executives, ceoPortrait, companyImage, loading = false }: Props = $props();
+	let portraitFailed = $state(false);
 
 	const ceo = $derived(executives.find((e) => e.title?.toLowerCase().includes('ceo')));
 	const otherExecs = $derived(executives.filter((e) => e !== ceo).slice(0, 4));
+
+	// Get the best available portrait with fallback chain
+	const effectivePortrait = $derived.by(() => {
+		if (ceoPortrait && !portraitFailed) return ceoPortrait;
+		if (ceo?.name) return getAvatarFallback(ceo.name);
+		return null;
+	});
+
+	function handlePortraitError() {
+		portraitFailed = true;
+	}
 </script>
 
 <div class="executive-card">
@@ -37,8 +51,15 @@
 			{#if ceo}
 				<div class="ceo-section">
 					<div class="ceo-portrait">
-						{#if ceoPortrait}
-							<img src={ceoPortrait} alt={ceo.name} class="portrait-img" loading="lazy" decoding="async" />
+						{#if effectivePortrait}
+							<img
+								src={effectivePortrait}
+								alt={ceo.name}
+								class="portrait-img"
+								loading="eager"
+								decoding="sync"
+								onerror={handlePortraitError}
+							/>
 						{:else}
 							<div class="portrait-placeholder">
 								{ceo.name

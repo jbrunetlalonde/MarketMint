@@ -25,5 +25,11 @@ export const quotesApi = {
 			losers: Array<{ ticker: string; name?: string; price: number; change: number; changePercent: number; volume: number }>;
 			mostActive: Array<{ ticker: string; name?: string; price: number; change: number; changePercent: number; volume: number }>;
 			timestamp: string;
-		}>(`/api/quotes/movers?limit=${limit}`, { token })
+		}>(`/api/quotes/movers?limit=${limit}`, { token }),
+
+	getSectorPerformance: (token?: string) =>
+		request<Array<{ sector: string; changePercent: number }>>(
+			'/api/quotes/sector-performance',
+			{ token }
+		)
 };

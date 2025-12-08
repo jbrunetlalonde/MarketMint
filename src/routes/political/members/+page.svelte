@@ -1,7 +1,7 @@
 <script lang="ts">
 	import api from '$lib/utils/api';
-	import { getCongressPortraitUrl } from '$lib/utils/urls';
-	import { getPartyAbbrev, getPartyClass, getInitials } from '$lib/utils/political';
+	import { getCongressPortraitUrl, getAvatarFallback } from '$lib/utils/urls';
+	import { getPartyAbbrev } from '$lib/utils/political';
 
 	interface Official {
 		id: string;
@@ -18,40 +18,27 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	let filterChamber = $state<'all' | 'senate' | 'house'>('all');
-	let filterParty = $state<'all' | 'D' | 'R'>('all');
-	let searchQuery = $state('');
+	// Pagination state
+	const ITEMS_PER_PAGE = 20;
+	let housePage = $state(1);
+	let senatePage = $state(1);
 
-	const filteredOfficials = $derived.by(() => {
-		let result = officials;
+	// Filtered by chamber
+	const houseMembers = $derived(officials.filter((o) => o.chamber === 'house'));
+	const senateMembers = $derived(officials.filter((o) => o.chamber === 'senate'));
 
-		if (filterChamber !== 'all') {
-			result = result.filter((o) => o.chamber === filterChamber);
-		}
+	// Pagination calculations
+	const houseTotalPages = $derived(Math.ceil(houseMembers.length / ITEMS_PER_PAGE));
+	const senateTotalPages = $derived(Math.ceil(senateMembers.length / ITEMS_PER_PAGE));
 
-		if (filterParty !== 'all') {
-			result = result.filter((o) => {
-				const party = o.party?.toLowerCase() || '';
-				if (filterParty === 'D') return party.includes('democrat') || party === 'd';
-				if (filterParty === 'R') return party.includes('republican') || party === 'r';
-				return true;
-			});
-		}
+	const paginatedHouse = $derived(
+		houseMembers.slice((housePage - 1) * ITEMS_PER_PAGE, housePage * ITEMS_PER_PAGE)
+	);
+	const paginatedSenate = $derived(
+		senateMembers.slice((senatePage - 1) * ITEMS_PER_PAGE, senatePage * ITEMS_PER_PAGE)
+	);
 
-		if (searchQuery.trim()) {
-			const query = searchQuery.trim().toLowerCase();
-			result = result.filter(
-				(o) =>
-					o.name.toLowerCase().includes(query) ||
-					o.state?.toLowerCase().includes(query)
-			);
-		}
-
-		return result;
-	});
-
-	const senateMembers = $derived(filteredOfficials.filter((o) => o.chamber === 'senate'));
-	const houseMembers = $derived(filteredOfficials.filter((o) => o.chamber === 'house'));
+	const totalCount = $derived(officials.length);
 
 	async function loadOfficials() {
 		loading = true;
@@ -75,319 +62,383 @@
 		return getCongressPortraitUrl(name, chamber as 'senate' | 'house');
 	}
 
+	// Try the other chamber portrait before falling back to avatar
+	function handlePortraitError(e: Event, name: string, currentChamber: string) {
+		const img = e.currentTarget as HTMLImageElement;
+		const otherChamber = currentChamber === 'house' ? 'senate' : 'house';
+		const otherUrl = getCongressPortraitUrl(name, otherChamber);
+
+		// If we haven't tried the other chamber yet
+		if (!img.dataset.triedOther) {
+			img.dataset.triedOther = 'true';
+			img.src = otherUrl;
+		} else {
+			// Both chambers failed, use avatar fallback
+			img.src = getAvatarFallback(name);
+		}
+	}
+
+	function getPageNumbers(currentPage: number, totalPages: number): (number | string)[] {
+		const pages: (number | string)[] = [];
+		if (totalPages <= 7) {
+			for (let i = 1; i <= totalPages; i++) pages.push(i);
+		} else {
+			pages.push(1);
+			if (currentPage > 3) pages.push('...');
+			for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+				pages.push(i);
+			}
+			if (currentPage < totalPages - 2) pages.push('...');
+			pages.push(totalPages);
+		}
+		return pages;
+	}
+
 	$effect(() => {
 		loadOfficials();
 	});
 </script>
 
 <svelte:head>
-	<title>Congress Members - MarketMint</title>
+	<title>Politicians List - MarketMint</title>
 </svelte:head>
 
-<div class="newspaper-grid">
-	<section class="col-span-full">
-		<h1 class="headline headline-xl">Congress Members Directory</h1>
-		<p class="text-ink-muted mt-2">
-			Browse House and Senate members. Click to view their trading activity.
-		</p>
-	</section>
-
-	<!-- Filters -->
-	<section class="col-span-full">
-		<div class="card">
-			<div class="flex gap-4 flex-wrap items-end">
-				<div>
-					<label for="filter-chamber" class="byline block mb-1">Chamber</label>
-					<select id="filter-chamber" bind:value={filterChamber} class="input">
-						<option value="all">All</option>
-						<option value="senate">Senate</option>
-						<option value="house">House</option>
-					</select>
-				</div>
-				<div>
-					<label for="filter-party" class="byline block mb-1">Party</label>
-					<select id="filter-party" bind:value={filterParty} class="input">
-						<option value="all">All Parties</option>
-						<option value="D">Democrat</option>
-						<option value="R">Republican</option>
-					</select>
-				</div>
-				<div class="flex-1 min-w-48">
-					<label for="search-member" class="byline block mb-1">Search</label>
-					<input
-						type="text"
-						id="search-member"
-						bind:value={searchQuery}
-						placeholder="Search by name or state..."
-						class="input w-full"
-					/>
-				</div>
-			</div>
-		</div>
-	</section>
+<div class="politicians-page">
+	<!-- Header -->
+	<header class="page-header">
+		<h1 class="page-title">Politicians List <span class="count">({totalCount})</span></h1>
+	</header>
 
 	{#if loading}
-		<section class="col-span-full">
-			<div class="card text-center py-8">
-				<p class="text-ink-muted">Loading Congress members...</p>
-			</div>
-		</section>
+		<div class="loading-state">
+			<p>Loading Congress members...</p>
+		</div>
 	{:else if error}
-		<section class="col-span-full">
-			<div class="card text-center py-8">
-				<p class="text-red-600 mb-4">{error}</p>
-				<button onclick={loadOfficials} class="btn btn-primary">Try Again</button>
-			</div>
-		</section>
-	{:else if filterChamber === 'all'}
-		<!-- Two Column View: House | Senate -->
-		<section class="col-span-6">
-			<div class="card">
-				<div class="flex items-center justify-between mb-4 pb-2 border-b-2 border-ink-light border-dotted">
-					<h2 class="headline headline-md">House</h2>
-					<span class="badge">{houseMembers.length}</span>
+		<div class="error-state">
+			<p class="error-message">{error}</p>
+			<button onclick={loadOfficials} class="retry-btn">Try Again</button>
+		</div>
+	{:else}
+		<!-- Two Column Layout -->
+		<div class="columns-container">
+			<!-- House Column -->
+			<div class="column">
+				<div class="column-header">
+					<h2>House <span class="count">({houseMembers.length})</span></h2>
+					<div class="column-labels">
+						<span class="label-name">NAME</span>
+						<span class="label-action">ACTION</span>
+					</div>
 				</div>
-				{#if houseMembers.length === 0}
-					<p class="text-ink-muted text-center py-4">No House members found.</p>
-				{:else}
-					<div class="member-list">
-						{#each houseMembers as member (member.id || member.name)}
-							{@const portraitFailed = false}
-							<a
-								href="/political/member/{encodeURIComponent(member.name)}"
-								class="member-row"
-							>
+
+				<div class="member-list">
+					{#each paginatedHouse as member (member.id || member.name)}
+						<a
+							href="/political/member/{encodeURIComponent(member.name)}"
+							class="member-row"
+						>
+							<div class="member-info">
 								<img
 									src={getPortraitUrl(member.name, 'house')}
-									alt={member.name}
+									alt=""
 									class="member-portrait"
 									loading="lazy"
-									decoding="async"
-									onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+									onerror={(e) => handlePortraitError(e, member.name, 'house')}
 								/>
-								<div class="member-info">
-									<span class="member-name">{member.name}</span>
-									<span class="member-meta">
-										{getPartyAbbrev(member.party)}{#if member.state}-{member.state}{/if}
-									</span>
-								</div>
-								<span class="view-link">View Trades</span>
-							</a>
+								<span class="member-name">{member.name}</span>
+							</div>
+							<span class="view-link">View Trades</span>
+						</a>
+					{/each}
+				</div>
+
+				<!-- House Pagination -->
+				{#if houseTotalPages > 1}
+					<div class="pagination">
+						<button
+							class="page-btn"
+							disabled={housePage === 1}
+							onclick={() => housePage--}
+						>
+							Prev
+						</button>
+						{#each getPageNumbers(housePage, houseTotalPages) as page}
+							{#if page === '...'}
+								<span class="page-ellipsis">...</span>
+							{:else}
+								<button
+									class="page-btn"
+									class:active={page === housePage}
+									onclick={() => housePage = page as number}
+								>
+									{page}
+								</button>
+							{/if}
 						{/each}
+						<button
+							class="page-btn"
+							disabled={housePage === houseTotalPages}
+							onclick={() => housePage++}
+						>
+							Next
+						</button>
 					</div>
 				{/if}
 			</div>
-		</section>
 
-		<section class="col-span-6">
-			<div class="card">
-				<div class="flex items-center justify-between mb-4 pb-2 border-b-2 border-ink-light border-dotted">
-					<h2 class="headline headline-md">Senate</h2>
-					<span class="badge">{senateMembers.length}</span>
+			<!-- Senate Column -->
+			<div class="column">
+				<div class="column-header">
+					<h2>Senate <span class="count">({senateMembers.length})</span></h2>
+					<div class="column-labels">
+						<span class="label-name">NAME</span>
+						<span class="label-action">ACTION</span>
+					</div>
 				</div>
-				{#if senateMembers.length === 0}
-					<p class="text-ink-muted text-center py-4">No Senate members found.</p>
-				{:else}
-					<div class="member-list">
-						{#each senateMembers as member (member.id || member.name)}
-							<a
-								href="/political/member/{encodeURIComponent(member.name)}"
-								class="member-row"
-							>
+
+				<div class="member-list">
+					{#each paginatedSenate as member (member.id || member.name)}
+						<a
+							href="/political/member/{encodeURIComponent(member.name)}"
+							class="member-row"
+						>
+							<div class="member-info">
 								<img
 									src={getPortraitUrl(member.name, 'senate')}
-									alt={member.name}
+									alt=""
 									class="member-portrait"
 									loading="lazy"
-									decoding="async"
-									onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+									onerror={(e) => handlePortraitError(e, member.name, 'senate')}
 								/>
-								<div class="member-info">
-									<span class="member-name">{member.name}</span>
-									<span class="member-meta">
-										{getPartyAbbrev(member.party)}{#if member.state}-{member.state}{/if}
-									</span>
-								</div>
-								<span class="view-link">View Trades</span>
-							</a>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		</section>
-	{:else}
-		<!-- Single Column View (filtered by chamber) -->
-		<section class="col-span-full">
-			<div class="card">
-				<div class="flex items-center justify-between mb-4 pb-2 border-b-2 border-ink-light border-dotted">
-					<h2 class="headline headline-md">
-						{filterChamber === 'senate' ? 'Senate' : 'House'}
-					</h2>
-					<span class="badge">{filteredOfficials.length}</span>
+								<span class="member-name">{member.name}</span>
+							</div>
+							<span class="view-link">View Trades</span>
+						</a>
+					{/each}
 				</div>
-				{#if filteredOfficials.length === 0}
-					<p class="text-ink-muted text-center py-4">No members found matching your filters.</p>
-				{:else}
-					<div class="member-grid">
-						{#each filteredOfficials as member (member.id || member.name)}
-							<a
-								href="/political/member/{encodeURIComponent(member.name)}"
-								class="member-card"
-							>
-								<img
-									src={getPortraitUrl(member.name, member.chamber)}
-									alt={member.name}
-									class="member-card-portrait"
-									loading="lazy"
-									decoding="async"
-									onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
-								/>
-								<div class="member-card-info">
-									<span class="member-card-name">{member.name}</span>
-									<span class="member-card-meta">
-										<span class="text-xs px-1.5 py-0.5 rounded {getPartyClass(member.party)}">
-											{getPartyAbbrev(member.party)}
-										</span>
-										{#if member.state}
-											<span class="text-ink-muted">{member.state}</span>
-										{/if}
-									</span>
-								</div>
-							</a>
+
+				<!-- Senate Pagination -->
+				{#if senateTotalPages > 1}
+					<div class="pagination">
+						<button
+							class="page-btn"
+							disabled={senatePage === 1}
+							onclick={() => senatePage--}
+						>
+							Prev
+						</button>
+						{#each getPageNumbers(senatePage, senateTotalPages) as page}
+							{#if page === '...'}
+								<span class="page-ellipsis">...</span>
+							{:else}
+								<button
+									class="page-btn"
+									class:active={page === senatePage}
+									onclick={() => senatePage = page as number}
+								>
+									{page}
+								</button>
+							{/if}
 						{/each}
+						<button
+							class="page-btn"
+							disabled={senatePage === senateTotalPages}
+							onclick={() => senatePage++}
+						>
+							Next
+						</button>
 					</div>
 				{/if}
 			</div>
-		</section>
+		</div>
 	{/if}
 </div>
 
 <style>
-	.member-list {
+	.politicians-page {
+		max-width: 1400px;
+		margin: 0 auto;
+		padding: 2rem 1rem;
+		font-family: 'IBM Plex Mono', monospace;
+	}
+
+	.page-header {
+		margin-bottom: 2rem;
+		padding-bottom: 1rem;
+		border-bottom: 2px dotted var(--color-ink);
+	}
+
+	.page-title {
+		font-size: 2rem;
+		font-weight: 700;
+		margin: 0;
+		color: var(--color-ink);
+	}
+
+	.count {
+		font-weight: 400;
+		color: var(--color-ink-muted);
+	}
+
+	.loading-state,
+	.error-state {
+		text-align: center;
+		padding: 3rem 1rem;
+		background: var(--color-newsprint);
+		border: 1px solid var(--color-border);
+	}
+
+	.error-message {
+		color: var(--color-loss);
+		margin-bottom: 1rem;
+	}
+
+	.retry-btn {
+		padding: 0.5rem 1.5rem;
+		background: var(--color-ink);
+		color: var(--color-newsprint);
+		border: none;
+		cursor: pointer;
+		font-family: inherit;
+	}
+
+	.retry-btn:hover {
+		background: var(--color-ink-light);
+	}
+
+	.columns-container {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 2rem;
+	}
+
+	.column {
+		background: var(--color-newsprint);
+		border: 1px solid var(--color-border);
+	}
+
+	.column-header {
+		padding: 1rem 1.5rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.column-header h2 {
+		font-size: 1.25rem;
+		font-weight: 700;
+		margin: 0 0 0.75rem;
+		color: var(--color-ink);
+	}
+
+	.column-labels {
 		display: flex;
-		flex-direction: column;
-		gap: 0;
-		max-height: 600px;
-		overflow-y: auto;
+		justify-content: space-between;
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		color: var(--color-ink-faint);
+		letter-spacing: 0.05em;
+	}
+
+	.member-list {
+		min-height: 400px;
 	}
 
 	.member-row {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem 0;
-		border-bottom: 1px dotted var(--color-ink-light, #e5e7eb);
+		justify-content: space-between;
+		padding: 0.75rem 1.5rem;
 		text-decoration: none;
 		color: inherit;
+		border-bottom: 1px dotted var(--color-border);
 		transition: background-color 0.15s;
 	}
 
 	.member-row:hover {
-		background-color: var(--color-newsprint-dark, #f3f4f6);
+		background-color: var(--color-newsprint-dark);
 	}
 
 	.member-row:last-child {
 		border-bottom: none;
 	}
 
-	.member-portrait {
-		width: 2.5rem;
-		height: 3rem;
-		object-fit: contain;
-		border: 1px solid var(--color-ink-light, #e5e7eb);
-		background-color: var(--color-newsprint, #fafaf9);
-		flex-shrink: 0;
+	.member-info {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		min-width: 0;
 	}
 
-	.member-info {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
+	.member-portrait {
+		width: 44px;
+		height: 54px;
+		object-fit: contain;
+		background: var(--color-paper, #fff);
+		border: 1px solid var(--color-border);
+		flex-shrink: 0;
 	}
 
 	.member-name {
 		font-weight: 500;
-		font-size: 0.875rem;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.member-meta {
-		font-size: 0.75rem;
-		color: var(--color-ink-muted, #6b7280);
+		font-size: 0.9rem;
+		color: var(--color-ink);
 	}
 
 	.view-link {
-		font-size: 0.75rem;
-		color: var(--color-ink-muted, #6b7280);
-		text-decoration: underline;
-		flex-shrink: 0;
+		font-size: 0.875rem;
+		color: var(--color-ink-muted);
+		white-space: nowrap;
 	}
 
 	.member-row:hover .view-link {
-		color: var(--color-ink, #111827);
+		color: var(--color-ink);
+		text-decoration: underline;
 	}
 
-	.member-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-		gap: 1rem;
-	}
-
-	.member-card {
+	/* Pagination */
+	.pagination {
 		display: flex;
-		flex-direction: column;
-		align-items: center;
-		padding: 1rem;
-		border: 1px solid var(--color-ink-light, #e5e7eb);
-		background-color: var(--color-newsprint, #fafaf9);
-		text-decoration: none;
-		color: inherit;
-		transition: box-shadow 0.15s, transform 0.15s;
-	}
-
-	.member-card:hover {
-		box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-		transform: translateY(-2px);
-	}
-
-	.member-card-portrait {
-		width: 4rem;
-		height: 5rem;
-		object-fit: contain;
-		border: 1px solid var(--color-ink-light, #e5e7eb);
-		background-color: white;
-		margin-bottom: 0.75rem;
-	}
-
-	.member-card-info {
-		text-align: center;
-		width: 100%;
-	}
-
-	.member-card-name {
-		display: block;
-		font-weight: 600;
-		font-size: 0.875rem;
-		margin-bottom: 0.25rem;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.member-card-meta {
-		display: flex;
-		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
-		font-size: 0.75rem;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 1rem;
+		border-top: 1px solid var(--color-border);
 	}
 
-	@media (max-width: 768px) {
-		.member-grid {
-			grid-template-columns: repeat(2, 1fr);
+	.page-btn {
+		padding: 0.375rem 0.75rem;
+		background: var(--color-newsprint);
+		border: 1px solid var(--color-border);
+		font-family: inherit;
+		font-size: 0.8rem;
+		cursor: pointer;
+		color: var(--color-ink);
+	}
+
+	.page-btn:hover:not(:disabled) {
+		background: var(--color-newsprint-dark);
+		border-color: var(--color-ink-muted);
+	}
+
+	.page-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.page-btn.active {
+		background: var(--color-ink);
+		color: var(--color-newsprint);
+		border-color: var(--color-ink);
+	}
+
+	.page-ellipsis {
+		padding: 0 0.5rem;
+		color: var(--color-ink-muted);
+	}
+
+	@media (max-width: 900px) {
+		.columns-container {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

@@ -552,12 +552,14 @@
 	}
 
 	.main-chart {
-		height: 280px;
+		height: 320px;
+		min-height: 280px;
 		position: relative;
 	}
 
 	.secondary-chart {
-		height: 280px;
+		height: 320px;
+		min-height: 280px;
 		position: relative;
 		padding-left: 1rem;
 		border-left: 1px solid var(--color-border);

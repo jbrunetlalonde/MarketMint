@@ -1,37 +1,49 @@
 import { request } from './request';
 
+interface PoliticalTrade {
+	id: number;
+	officialName: string;
+	ticker: string;
+	assetDescription: string;
+	transactionType: string;
+	transactionDate: string;
+	reportedDate: string;
+	amountMin: number | null;
+	amountMax: number | null;
+	amountDisplay: string;
+	party: string | null;
+	title: string | null;
+	state: string | null;
+	portraitUrl: string | null;
+	chamber: string;
+	isMock?: boolean;
+}
+
+interface PoliticalTradesResponse {
+	success: boolean;
+	data: PoliticalTrade[];
+	pagination?: {
+		limit: number;
+		offset: number;
+		hasMore: boolean;
+	};
+}
+
 export const politicalApi = {
-	getPoliticalTrades: (
-		options?: { party?: string; chamber?: string; transactionType?: string; ticker?: string; limit?: number },
+	getPoliticalTrades: async (
+		options?: { party?: string; chamber?: string; transactionType?: string; ticker?: string; limit?: number; offset?: number },
 		token?: string
-	) => {
+	): Promise<PoliticalTradesResponse> => {
 		const params = new URLSearchParams();
 		if (options?.party) params.set('party', options.party);
 		if (options?.chamber) params.set('chamber', options.chamber);
 		if (options?.transactionType) params.set('transactionType', options.transactionType);
 		if (options?.ticker) params.set('ticker', options.ticker);
 		if (options?.limit) params.set('limit', String(options.limit));
+		if (options?.offset) params.set('offset', String(options.offset));
 		const queryString = params.toString();
-		return request<
-			Array<{
-				id: number;
-				officialName: string;
-				ticker: string;
-				assetDescription: string;
-				transactionType: string;
-				transactionDate: string;
-				reportedDate: string;
-				amountMin: number | null;
-				amountMax: number | null;
-				amountDisplay: string;
-				party: string | null;
-				title: string | null;
-				state: string | null;
-				portraitUrl: string | null;
-				chamber: string;
-				isMock?: boolean;
-			}>
-		>(`/api/political/trades${queryString ? `?${queryString}` : ''}`, { token });
+		const result = await request<PoliticalTrade[]>(`/api/political/trades${queryString ? `?${queryString}` : ''}`, { token });
+		return result as unknown as PoliticalTradesResponse;
 	},
 
 	getPoliticalTradesByTicker: (ticker: string, limit?: number, token?: string) =>

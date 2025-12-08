@@ -805,21 +805,32 @@ export async function getGeneralNews(limit = 50) {
   if (cached) return cached;
 
   try {
-    const data = await fetchFMP(`/fmp/articles?page=0&size=${limit}`);
+    // Use stock news endpoint with major market tickers for general market news
+    const majorTickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA'];
+    const data = await fetchFMP(`/news/stock?tickers=${majorTickers.join(',')}&limit=${limit}`);
 
-    if (!data || !data.content) {
+    if (!data || !Array.isArray(data)) {
       return [];
     }
 
-    const formatted = data.content.map(item => ({
-      title: item.title,
-      text: item.content,
-      url: item.link,
-      image: item.image,
-      site: item.site || 'FMP',
-      publishedDate: item.date,
-      related: item.tickers?.join(',') || null
-    }));
+    // Deduplicate by title and sort by date
+    const seen = new Set();
+    const formatted = data
+      .filter(item => {
+        if (seen.has(item.title)) return false;
+        seen.add(item.title);
+        return true;
+      })
+      .map(item => ({
+        title: item.title,
+        text: item.text,
+        url: item.url,
+        image: item.image,
+        site: item.site,
+        publishedDate: item.publishedDate,
+        related: item.symbol || null
+      }))
+      .slice(0, limit);
 
     setMemoryCache(cacheKey, formatted, ttl);
     return formatted;
