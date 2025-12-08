@@ -20,6 +20,14 @@
 	import InstitutionalOwners from '$lib/components/InstitutionalOwners.svelte';
 	import SplitHistory from '$lib/components/SplitHistory.svelte';
 	import SectorPeers from '$lib/components/SectorPeers.svelte';
+	import TickerNews from '$lib/components/TickerNews.svelte';
+	import InsiderTrades from '$lib/components/InsiderTrades.svelte';
+	import SecFilings from '$lib/components/SecFilings.svelte';
+	import DividendHistory from '$lib/components/DividendHistory.svelte';
+	import RevenueSegments from '$lib/components/RevenueSegments.svelte';
+	import EarningsHistory from '$lib/components/EarningsHistory.svelte';
+	import AnalystBreakdown from '$lib/components/AnalystBreakdown.svelte';
+	import FinancialScorecard from '$lib/components/FinancialScorecard.svelte';
 	import api from '$lib/utils/api';
 	import { getPortraitUrl, getCongressPortraitUrl as getCongressPortrait } from '$lib/utils/urls';
 
@@ -141,6 +149,99 @@
 		denominator: number;
 	}>>([]);
 
+	// News articles
+	let news = $state<Array<{
+		title: string;
+		url: string;
+		publishedDate: string;
+		site: string;
+		text?: string;
+		image?: string;
+	}>>([]);
+
+	// Insider trades
+	let insiderTrades = $state<Array<{
+		filingDate: string;
+		transactionDate: string;
+		reportingName: string;
+		transactionType: string;
+		securitiesTransacted: number;
+		price: number | null;
+		securityName: string;
+		typeOfOwner: string;
+	}>>([]);
+
+	// SEC filings
+	let secFilings = $state<Array<{
+		symbol: string;
+		type: string;
+		link: string;
+		finalLink: string;
+		acceptedDate: string;
+		fillingDate: string;
+	}>>([]);
+
+	// Dividend history
+	let dividends = $state<Array<{
+		date: string;
+		label: string;
+		dividend: number;
+		adjDividend: number;
+		paymentDate: string;
+		recordDate: string;
+		declarationDate: string;
+	}>>([]);
+
+	// Revenue segments
+	let revenueSegments = $state<{
+		productSegments: Array<{ segment: string; revenue: number; year: number }>;
+		geographicSegments: Array<{ segment: string; revenue: number; year: number }>;
+	}>({ productSegments: [], geographicSegments: [] });
+
+	// Earnings history
+	let earningsHistory = $state<Array<{
+		date: string;
+		symbol?: string;
+		actualEarningsResult: number | null;
+		estimatedEarning: number | null;
+		revenue?: number | null;
+		revenueEstimated?: number | null;
+		surprisePercent: number | null;
+		revenueSurprisePercent?: number | null;
+	}>>([]);
+
+	// Analyst grades
+	let analystGrades = $state<Array<{
+		symbol?: string;
+		publishedDate: string;
+		gradingCompany: string;
+		newGrade: string;
+		previousGrade?: string;
+		action: string;
+	}>>([]);
+
+	// Financial metrics for scorecard
+	let financialMetrics = $state<{
+		peRatio?: number | null;
+		pbRatio?: number | null;
+		debtToEquity?: number | null;
+		currentRatio?: number | null;
+		roe?: number | null;
+		roa?: number | null;
+		dividendYield?: number | null;
+		grossProfitMargin?: number | null;
+		operatingProfitMargin?: number | null;
+		netProfitMargin?: number | null;
+	} | null>(null);
+
+	// Loading states for new data
+	let newsLoading = $state(false);
+	let insiderLoading = $state(false);
+	let filingsLoading = $state(false);
+	let dividendsLoading = $state(false);
+	let earningsLoading = $state(false);
+	let gradesLoading = $state(false);
+
 	// Congress trades for this ticker
 	let congressTrades = $state<Array<{
 		id: number;
@@ -190,8 +291,10 @@
 		{ label: '1W', value: '5d' },
 		{ label: '1M', value: '1m' },
 		{ label: '3M', value: '3m' },
+		{ label: 'YTD', value: 'ytd' },
 		{ label: '1Y', value: '1y' },
-		{ label: '5Y', value: '5y' }
+		{ label: '5Y', value: '5y' },
+		{ label: '10Y', value: '10y' }
 	];
 
 	async function loadData() {
@@ -243,10 +346,30 @@
 			await loadFinancials(financialPeriod);
 
 			// Fetch additional data in parallel
-			const [congressRes, institutionalRes, splitsRes] = await Promise.all([
+			const [
+				congressRes,
+				institutionalRes,
+				splitsRes,
+				newsRes,
+				insiderRes,
+				filingsRes,
+				dividendsRes,
+				segmentsRes,
+				earningsRes,
+				gradesRes,
+				metricsRes
+			] = await Promise.all([
 				api.getPoliticalTradesByTicker(symbol, 10),
 				api.getInstitutionalHolders(symbol),
-				api.getSplits(symbol)
+				api.getSplits(symbol),
+				api.getStockNews(symbol, 10),
+				api.getInsiderTradesByTicker(symbol, 20),
+				api.getSecFilings(symbol, 15),
+				api.getDividends(symbol),
+				api.getRevenueSegmentsV2(symbol),
+				api.getEarningsHistory(symbol, 8),
+				api.getAnalystGrades(symbol, 15),
+				api.getKeyMetrics(symbol)
 			]);
 
 			if (congressRes.success && congressRes.data) {
@@ -259,6 +382,38 @@
 
 			if (splitsRes.success && splitsRes.data) {
 				splits = splitsRes.data;
+			}
+
+			if (newsRes.success && newsRes.data) {
+				news = newsRes.data;
+			}
+
+			if (insiderRes.success && insiderRes.data) {
+				insiderTrades = insiderRes.data;
+			}
+
+			if (filingsRes.success && filingsRes.data) {
+				secFilings = filingsRes.data;
+			}
+
+			if (dividendsRes.success && dividendsRes.data) {
+				dividends = dividendsRes.data;
+			}
+
+			if (segmentsRes.success && segmentsRes.data) {
+				revenueSegments = segmentsRes.data;
+			}
+
+			if (earningsRes.success && earningsRes.data) {
+				earningsHistory = earningsRes.data;
+			}
+
+			if (gradesRes.success && gradesRes.data) {
+				analystGrades = gradesRes.data;
+			}
+
+			if (metricsRes.success && metricsRes.data) {
+				financialMetrics = metricsRes.data;
 			}
 		} catch (err) {
 			error = 'Failed to load stock data';
@@ -735,12 +890,60 @@
 			</div>
 		</section>
 
+		<!-- News Section -->
+		<section class="news-section">
+			<TickerNews
+				{news}
+				loading={newsLoading}
+				ticker={symbol}
+			/>
+		</section>
+
+		<!-- Earnings and Analyst Activity Row -->
+		<section class="earnings-analyst-row">
+			<div class="earnings-wrapper">
+				<EarningsHistory
+					earnings={earningsHistory}
+					loading={earningsLoading}
+					ticker={symbol}
+				/>
+			</div>
+			<div class="analyst-wrapper">
+				<AnalystBreakdown
+					grades={analystGrades}
+					loading={gradesLoading}
+					ticker={symbol}
+				/>
+			</div>
+		</section>
+
+		<!-- Financial Scorecard and Revenue Segments Row -->
+		<section class="scorecard-segments-row">
+			<div class="scorecard-wrapper">
+				<FinancialScorecard
+					metrics={financialMetrics}
+					loading={loading}
+					ticker={symbol}
+				/>
+			</div>
+			<div class="segments-wrapper">
+				<RevenueSegments
+					productSegments={revenueSegments.productSegments}
+					geographicSegments={revenueSegments.geographicSegments}
+					loading={loading}
+					ticker={symbol}
+				/>
+			</div>
+		</section>
+
 		<!-- Additional Info Row -->
 		<section class="info-row">
 			<div class="institutional-wrapper">
 				<InstitutionalOwners
 					holders={institutionalHolders}
+					sharesOutstanding={quoteData?.sharesOutstanding}
 					loading={institutionalLoading}
+					ticker={symbol}
 				/>
 			</div>
 			<div class="splits-wrapper">
@@ -758,6 +961,35 @@
 				/>
 			</div>
 		</section>
+
+		<!-- Insider Trades and SEC Filings Row -->
+		<section class="insider-filings-row">
+			<div class="insider-wrapper">
+				<InsiderTrades
+					trades={insiderTrades}
+					loading={insiderLoading}
+					ticker={symbol}
+				/>
+			</div>
+			<div class="filings-wrapper">
+				<SecFilings
+					filings={secFilings}
+					loading={filingsLoading}
+					ticker={symbol}
+				/>
+			</div>
+		</section>
+
+		<!-- Dividends Section -->
+		{#if dividends.length > 0}
+			<section class="dividends-section">
+				<DividendHistory
+					{dividends}
+					loading={dividendsLoading}
+					ticker={symbol}
+				/>
+			</section>
+		{/if}
 
 		<!-- Congress Trades Section -->
 		{#if congressTrades.length > 0}
@@ -1240,6 +1472,40 @@
 		border-top: 2px solid var(--color-ink);
 	}
 
+	/* News Section */
+	.news-section {
+		grid-column: 1 / -1;
+	}
+
+	/* Earnings and Analyst Row */
+	.earnings-analyst-row {
+		grid-column: 1 / -1;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1.5rem;
+	}
+
+	/* Scorecard and Segments Row */
+	.scorecard-segments-row {
+		grid-column: 1 / -1;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1.5rem;
+	}
+
+	/* Insider and Filings Row */
+	.insider-filings-row {
+		grid-column: 1 / -1;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1.5rem;
+	}
+
+	/* Dividends Section */
+	.dividends-section {
+		grid-column: 1 / -1;
+	}
+
 	/* Congress Section */
 	.congress-section {
 		grid-column: 1 / -1;
@@ -1426,7 +1692,10 @@
 	}
 
 	@media (max-width: 640px) {
-		.info-row {
+		.info-row,
+		.earnings-analyst-row,
+		.scorecard-segments-row,
+		.insider-filings-row {
 			grid-template-columns: 1fr;
 		}
 

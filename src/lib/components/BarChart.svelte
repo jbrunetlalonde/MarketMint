@@ -77,7 +77,7 @@
 						callbacks: {
 							label: (context) => {
 								const value = context.parsed[horizontal ? 'x' : 'y'];
-								return formatValue(value);
+								return formatValue(value ?? 0);
 							}
 						}
 					}

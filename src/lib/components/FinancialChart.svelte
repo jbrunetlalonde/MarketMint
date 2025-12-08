@@ -71,7 +71,7 @@
 		return `$${value.toFixed(0)}`;
 	}
 
-	function getBaseOptions(isDark: boolean, title: string) {
+	function getBaseOptions(isDark: boolean, title: string): any {
 		const textColor = isDark ? '#e8e8e0' : '#1a1a1a';
 		const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
 

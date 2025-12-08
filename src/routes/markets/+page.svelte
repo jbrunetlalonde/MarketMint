@@ -19,16 +19,24 @@
 		IWM: 'Russell 2000'
 	};
 
-	// Popular stocks to show in movers sections
-	const POPULAR_TICKERS = [
-		'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM',
-		'V', 'WMT', 'AMD', 'INTC', 'BA', 'DIS', 'NFLX'
-	];
+	type MoverStock = {
+		ticker: string;
+		name?: string;
+		price: number;
+		change: number;
+		changePercent: number;
+		volume: number;
+	};
 
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let error = $state<string | null>(null);
 	let lastUpdated = $state<Date | null>(null);
+
+	// Market movers data from API
+	let topGainers = $state<MoverStock[]>([]);
+	let topLosers = $state<MoverStock[]>([]);
+	let mostActive = $state<MoverStock[]>([]);
 
 	// Derived data from quotes store
 	const indicesData = $derived(
@@ -37,31 +45,6 @@
 			name: INDEX_NAMES[ticker],
 			...(quotes.getQuote(ticker) ?? { price: null, change: null, changePercent: null })
 		}))
-	);
-
-	const allQuotes = $derived(
-		POPULAR_TICKERS.map(ticker => quotes.getQuote(ticker)).filter(Boolean)
-	);
-
-	const topGainers = $derived(
-		[...allQuotes]
-			.filter(q => q && q.changePercent !== null && q.changePercent > 0)
-			.sort((a, b) => (b?.changePercent ?? 0) - (a?.changePercent ?? 0))
-			.slice(0, 5)
-	);
-
-	const topLosers = $derived(
-		[...allQuotes]
-			.filter(q => q && q.changePercent !== null && q.changePercent < 0)
-			.sort((a, b) => (a?.changePercent ?? 0) - (b?.changePercent ?? 0))
-			.slice(0, 5)
-	);
-
-	const mostActive = $derived(
-		[...allQuotes]
-			.filter(q => q && q.volume)
-			.sort((a, b) => (b?.volume ?? 0) - (a?.volume ?? 0))
-			.slice(0, 5)
 	);
 
 	// Sorting state for tables
@@ -139,13 +122,20 @@
 		error = null;
 
 		try {
-			// Fetch all quotes
-			const allTickers = [...INDICES, ...POPULAR_TICKERS];
-			await quotes.fetchBulkQuotes(allTickers);
+			// Fetch indices quotes
+			await quotes.fetchBulkQuotes(INDICES);
 
-			// Connect to WebSocket for real-time updates
+			// Connect to WebSocket for real-time updates on indices
 			quotes.connect();
-			quotes.subscribeMany(allTickers);
+			quotes.subscribeMany(INDICES);
+
+			// Fetch market movers from dedicated API
+			const moversResponse = await api.getMovers(10);
+			if (moversResponse.success && moversResponse.data) {
+				topGainers = moversResponse.data.gainers || [];
+				topLosers = moversResponse.data.losers || [];
+				mostActive = moversResponse.data.mostActive || [];
+			}
 
 			// Fetch news
 			const newsResponse = await api.getNews();

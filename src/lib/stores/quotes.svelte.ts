@@ -24,7 +24,7 @@ interface QuotesState {
 	error: string | null;
 }
 
-const WS_URL = env.PUBLIC_WS_URL || 'ws://localhost:3001';
+const WS_URL = env.PUBLIC_WS_URL || 'ws://localhost:5001';
 
 function createQuotesStore() {
 	let state = $state<QuotesState>({

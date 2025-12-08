@@ -10,10 +10,10 @@
 export function getPortraitBase(): string {
 	if (typeof window !== 'undefined') {
 		// Client-side: check for env var or use API base
-		return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:3001';
+		return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:5001';
 	}
 	// Server-side
-	return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:3001';
+	return import.meta.env.VITE_PORTRAIT_BASE || 'http://localhost:5001';
 }
 
 /**

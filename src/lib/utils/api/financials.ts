@@ -219,5 +219,90 @@ export const financialsApi = {
 				revenue: number | null;
 				revenueEstimate: number | null;
 			}>
-		>(`/api/financials/earnings/calendar?days=${days}`)
+		>(`/api/financials/earnings/calendar?days=${days}`),
+
+	getEarningsHistory: (ticker: string, limit = 8, token?: string) =>
+		request<
+			Array<{
+				date: string;
+				symbol: string;
+				actualEarningsResult: number | null;
+				estimatedEarning: number | null;
+				revenue: number | null;
+				revenueEstimated: number | null;
+				surprisePercent: number | null;
+				revenueSurprisePercent: number | null;
+			}>
+		>(`/api/financials/${ticker}/earnings-history?limit=${limit}`, { token }),
+
+	getSecFilings: (ticker: string, limit = 20, token?: string) =>
+		request<
+			Array<{
+				symbol: string;
+				cik: string;
+				formType: string;
+				filingDate: string;
+				acceptedDate: string;
+				link: string;
+				finalLink: string;
+			}>
+		>(`/api/financials/${ticker}/sec-filings?limit=${limit}`, { token }),
+
+	getAnalystGrades: (ticker: string, limit = 20, token?: string) =>
+		request<
+			Array<{
+				symbol: string;
+				publishedDate: string;
+				gradingCompany: string;
+				newGrade: string;
+				previousGrade: string;
+				action: string;
+			}>
+		>(`/api/financials/${ticker}/analyst-grades?limit=${limit}`, { token }),
+
+	getStockNews: (ticker: string, limit = 10, token?: string) =>
+		request<
+			Array<{
+				title: string;
+				url: string;
+				publishedDate: string;
+				site: string;
+				text?: string;
+				image?: string;
+			}>
+		>(`/api/financials/${ticker}/news?limit=${limit}`, { token }),
+
+	getInsiderTrades: (ticker: string, limit = 20, token?: string) =>
+		request<
+			Array<{
+				filingDate: string;
+				transactionDate: string;
+				reportingName: string;
+				transactionType: string;
+				securitiesTransacted: number;
+				price: number | null;
+				securityName: string;
+				typeOfOwner: string;
+			}>
+		>(`/api/financials/${ticker}/insider-trades?limit=${limit}`, { token }),
+
+	getKeyMetrics: (ticker: string, token?: string) =>
+		request<{
+			peRatio?: number | null;
+			pbRatio?: number | null;
+			debtToEquity?: number | null;
+			currentRatio?: number | null;
+			roe?: number | null;
+			roa?: number | null;
+			dividendYield?: number | null;
+			grossProfitMargin?: number | null;
+			operatingProfitMargin?: number | null;
+			netProfitMargin?: number | null;
+		}>(`/api/financials/${ticker}/key-metrics`, { token }),
+
+	getRevenueSegmentsV2: (ticker: string, token?: string) =>
+		request<{
+			productSegments: Array<{ segment: string; revenue: number; year: number }>;
+			geographicSegments: Array<{ segment: string; revenue: number; year: number }>;
+		}>(`/api/financials/${ticker}/revenue-segments`, { token })
 };

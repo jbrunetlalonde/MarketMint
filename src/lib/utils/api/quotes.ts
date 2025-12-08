@@ -17,5 +17,13 @@ export const quotesApi = {
 			ticker: string;
 			period: string;
 			history: Array<{ date: string; close: number; volume?: number }>;
-		}>(`/api/quotes/${ticker}/history?period=${period}`, { token })
+		}>(`/api/quotes/${ticker}/history?period=${period}`, { token }),
+
+	getMovers: (limit = 10, token?: string) =>
+		request<{
+			gainers: Array<{ ticker: string; name?: string; price: number; change: number; changePercent: number; volume: number }>;
+			losers: Array<{ ticker: string; name?: string; price: number; change: number; changePercent: number; volume: number }>;
+			mostActive: Array<{ ticker: string; name?: string; price: number; change: number; changePercent: number; volume: number }>;
+			timestamp: string;
+		}>(`/api/quotes/movers?limit=${limit}`, { token })
 };

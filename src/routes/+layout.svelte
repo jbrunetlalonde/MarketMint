@@ -51,12 +51,10 @@
 
 	const navLinks = [
 		{ href: '/markets', label: 'Markets' },
+		{ href: '/screener', label: 'Screener' },
 		{ href: '/watchlist', label: 'Watchlist' },
 		{ href: '/portfolio', label: 'Portfolio' },
 		{ href: '/political', label: 'Congress Trades' }
-		// { href: '/alerts', label: 'Alerts' }, // Moved to footer
-		// { href: '/newsletter', label: 'Newsletter' }, // Moved to footer
-		// { href: '/analysis', label: 'Analysis' } // Hidden for now
 	];
 
 	async function handleLogout() {

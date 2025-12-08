@@ -13,6 +13,7 @@ import { ideasApi } from './api/ideas';
 import { portfolioApi } from './api/portfolio';
 import { newsletterApi } from './api/newsletter';
 import { searchApi } from './api/search';
+import { screenerApi } from './api/screener';
 
 // Re-export types
 export type { ApiOptions, ApiResponse } from './api/request';
@@ -30,6 +31,7 @@ export const api = {
 	getQuote: quotesApi.getQuote,
 	getBulkQuotes: quotesApi.getBulkQuotes,
 	getHistory: quotesApi.getHistory,
+	getMovers: quotesApi.getMovers,
 
 	// Watchlist
 	getWatchlist: watchlistApi.getWatchlist,
@@ -55,6 +57,12 @@ export const api = {
 	getSplits: financialsApi.getSplits,
 	getFullFinancials: financialsApi.getFullFinancials,
 	getEarningsCalendar: financialsApi.getEarningsCalendar,
+	getEarningsHistory: financialsApi.getEarningsHistory,
+	getSecFilings: financialsApi.getSecFilings,
+	getAnalystGrades: financialsApi.getAnalystGrades,
+	getStockNews: financialsApi.getStockNews,
+	getKeyMetrics: financialsApi.getKeyMetrics,
+	getRevenueSegmentsV2: financialsApi.getRevenueSegmentsV2,
 
 	// News
 	getNews: newsApi.getNews,
@@ -119,7 +127,12 @@ export const api = {
 	unsubscribeNewsletter: newsletterApi.unsubscribeNewsletter,
 
 	// Search
-	searchSymbols: searchApi.searchSymbols
+	searchSymbols: searchApi.searchSymbols,
+
+	// Screener
+	screenStocks: screenerApi.screenStocks,
+	getScreenerSectors: screenerApi.getSectors,
+	getScreenerExchanges: screenerApi.getExchanges
 };
 
 export default api;

@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/public';
 
-export const API_BASE = env.PUBLIC_API_URL || 'http://localhost:3001';
+export const API_BASE = env.PUBLIC_API_URL || 'http://localhost:5001';
 
 export interface ApiOptions extends RequestInit {
 	token?: string;

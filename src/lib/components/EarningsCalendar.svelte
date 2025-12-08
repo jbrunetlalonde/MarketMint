@@ -31,7 +31,7 @@
 		return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 	}
 
-	const groupedEarnings = $derived(() => {
+	const groupedEarnings = $derived.by(() => {
 		const groups: Record<string, EarningsEvent[]> = {};
 		for (const e of earnings) {
 			const group = getDateGroup(e.date);
@@ -77,7 +77,7 @@
 		<p class="no-data">No upcoming earnings</p>
 	{:else}
 		<div class="earnings-groups">
-			{#each groupedEarnings() as [group, events] (group)}
+			{#each groupedEarnings as [group, events] (group)}
 				<div class="date-group">
 					<div class="date-header">{group}</div>
 					<div class="events">

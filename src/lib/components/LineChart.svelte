@@ -72,7 +72,7 @@
 						callbacks: {
 							label: (context) => {
 								const value = context.parsed.y;
-								return `$${value.toFixed(2)}`;
+								return value !== null ? `$${value.toFixed(2)}` : '--';
 							}
 						}
 					}
