@@ -243,8 +243,7 @@ body {
 .masthead {
   text-align: center;
   padding: 1.5rem 0;
-  border-bottom: 3px double var(--color-ink);
-  margin-bottom: 1.5rem;
+  margin-bottom: 0;
 }
 
 .masthead-title {

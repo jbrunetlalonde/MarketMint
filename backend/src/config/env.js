@@ -21,7 +21,7 @@ const jwtSecret = process.env.NODE_ENV === 'production'
 
 export const config = {
   // Server
-  port: parseInt(process.env.PORT || '5000', 10),
+  port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
 
   // Database

@@ -82,8 +82,12 @@
 		</div>
 	</div>
 
+	<div class="footer-disclaimer">
+		<p>Market data provided for informational purposes only. Prices may be delayed. Not financial advice.</p>
+	</div>
+
 	<div class="footer-bottom">
-		<p class="copyright">MarketMint {currentYear}. For educational purposes only.</p>
+		<p class="copyright">MarketMint {currentYear}</p>
 
 		<div class="theme-switcher">
 			<button
@@ -249,13 +253,28 @@
 		color: #dc2626;
 	}
 
+	.footer-disclaimer {
+		max-width: 1200px;
+		margin: 0 auto;
+		padding: 1rem 2rem;
+		border-top: 1px solid var(--color-border);
+		text-align: center;
+	}
+
+	.footer-disclaimer p {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		color: var(--color-ink-muted);
+		margin: 0;
+	}
+
 	.footer-bottom {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		max-width: 1200px;
 		margin: 0 auto;
-		padding: 1.5rem 2rem;
+		padding: 1rem 2rem;
 		border-top: 1px solid var(--color-border);
 	}
 

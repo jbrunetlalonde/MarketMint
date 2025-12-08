@@ -456,12 +456,6 @@
 			</div>
 		</section>
 
-		<!-- Disclaimer -->
-		<section class="col-span-full">
-			<p class="byline text-center mt-4">
-				Data from STOCK Act filings. For informational purposes only. Not financial advice.
-			</p>
-		</section>
 	{/if}
 </div>
 

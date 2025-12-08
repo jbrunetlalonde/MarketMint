@@ -360,11 +360,6 @@
 		{/if}
 	</section>
 
-	<section class="col-span-full">
-		<p class="byline text-center mt-4">
-			Data from SEC Form 4 filings. For informational purposes only. Not financial advice.
-		</p>
-	</section>
 </div>
 
 <style>

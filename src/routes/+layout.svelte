@@ -1,7 +1,7 @@
 <script lang="ts">
 	import './layout.css';
 	import { onMount } from 'svelte';
-	import { page } from '$app/state';
+	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { themeStore } from '$lib/stores/theme.svelte';
 	import api from '$lib/utils/api';
@@ -11,7 +11,7 @@
 
 	let { children } = $props();
 
-	const isLandingPage = $derived(page.url.pathname === '/');
+	const isLandingPage = $derived($page.url.pathname === '/');
 
 	let unreadAlertCount = $state(0);
 
@@ -90,7 +90,7 @@
 		<MastheadHeader {currentDate} />
 		<NavBar
 			links={navLinks}
-			currentPath={page.url.pathname}
+			currentPath={$page.url.pathname}
 			{unreadAlertCount}
 			isAuthenticated={auth.isAuthenticated}
 			username={auth.user?.username}

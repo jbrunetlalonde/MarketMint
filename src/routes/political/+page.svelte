@@ -262,18 +262,7 @@
 					</table>
 				</div>
 			{/if}
-			{#if trades.some((t) => t.isMock)}
-				<p class="text-xs text-ink-muted mt-4 text-center">
-					Showing sample data. Add FINNHUB_API_KEY to .env for live data.
-				</p>
-			{/if}
-		</section>
+			</section>
 	{/if}
 
-	<!-- Disclaimer -->
-	<section class="col-span-full">
-		<p class="byline text-center mt-4">
-			Data is for informational purposes only. Not financial advice.
-		</p>
-	</section>
 </div>

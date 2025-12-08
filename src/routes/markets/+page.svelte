@@ -436,14 +436,6 @@
 		<EarningsCalendar />
 	</aside>
 
-	<!-- Bottom Section - Disclaimer -->
-	<section class="col-span-full">
-		<hr class="divider-double" />
-		<p class="text-xs text-ink-muted text-center mt-4">
-			Market data provided for informational purposes only. Prices may be delayed.
-			Not financial advice.
-		</p>
-	</section>
 </div>
 
 <style>
