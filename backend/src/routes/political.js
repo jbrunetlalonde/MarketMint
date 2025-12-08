@@ -45,7 +45,7 @@ router.get('/trades', async (req, res, next) => {
         data: trades
       });
     } catch (err) {
-      logger.warn('Finnhub political trades failed, using mock data', { error: err.message });
+      logger.warn('FMP political trades failed, using mock data', { error: err.message });
       res.json({
         success: true,
         data: getMockTrades({ party, ticker, chamber, transactionType, limit })
@@ -75,7 +75,7 @@ router.get('/trades/:ticker', async (req, res, next) => {
         data: trades.slice(0, safeLimit)
       });
     } catch (err) {
-      logger.warn('Finnhub trades failed', { ticker, error: err.message });
+      logger.warn('FMP trades failed', { ticker, error: err.message });
       res.json({
         success: true,
         data: getMockTrades({ ticker: ticker.toUpperCase(), limit })

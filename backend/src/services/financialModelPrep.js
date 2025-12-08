@@ -268,8 +268,13 @@ export async function getHistoricalPrices(ticker, period = '1y') {
         case '1m': startDate.setMonth(startDate.getMonth() - 1); break;
         case '3m': startDate.setMonth(startDate.getMonth() - 3); break;
         case '6m': startDate.setMonth(startDate.getMonth() - 6); break;
+        case 'ytd':
+          startDate.setMonth(0);
+          startDate.setDate(1);
+          break;
         case '1y': startDate.setFullYear(startDate.getFullYear() - 1); break;
         case '5y': startDate.setFullYear(startDate.getFullYear() - 5); break;
+        case '10y': startDate.setFullYear(startDate.getFullYear() - 10); break;
         default: startDate.setFullYear(startDate.getFullYear() - 1);
       }
 
@@ -791,6 +796,38 @@ export async function getStockNews(ticker, limit = 10) {
   }
 }
 
+export async function getGeneralNews(limit = 50) {
+  const cacheKey = getCacheKey('general-news', 'all');
+  const ttl = config.cacheTTL.news || 1800;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const data = await fetchFMP(`/fmp/articles?page=0&size=${limit}`);
+
+    if (!data || !data.content) {
+      return [];
+    }
+
+    const formatted = data.content.map(item => ({
+      title: item.title,
+      text: item.content,
+      url: item.link,
+      image: item.image,
+      site: item.site || 'FMP',
+      publishedDate: item.date,
+      related: item.tickers?.join(',') || null
+    }));
+
+    setMemoryCache(cacheKey, formatted, ttl);
+    return formatted;
+  } catch (err) {
+    console.warn('FMP general news not available:', err.message);
+    return [];
+  }
+}
+
 export async function getDividends(ticker) {
   const cacheKey = getCacheKey('dividends', ticker);
   const ttl = config.cacheTTL.financials;
@@ -1135,6 +1172,44 @@ export async function getRevenueSegments(ticker, period = 'annual') {
   });
 }
 
+export async function getProductRevenue(ticker) {
+  const cacheKey = getCacheKey('productRevenue', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const memCached = getFromMemoryCache(cacheKey);
+  if (memCached) return memCached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/revenue-product-segmentation?symbol=${ticker}&structure=flat`);
+      setMemoryCache(cacheKey, data, ttl);
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn(`FMP product revenue not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+export async function getGeographicRevenue(ticker) {
+  const cacheKey = getCacheKey('geoRevenue', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const memCached = getFromMemoryCache(cacheKey);
+  if (memCached) return memCached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/revenue-geographic-segmentation?symbol=${ticker}&structure=flat`);
+      setMemoryCache(cacheKey, data, ttl);
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn(`FMP geographic revenue not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
 export async function getInstitutionalHolders(ticker) {
   const cacheKey = getCacheKey('institutional', ticker);
   const ttl = config.cacheTTL.financials;
@@ -1234,6 +1309,393 @@ export async function searchSymbols(query, limit = 10) {
   });
 }
 
+// Congress Trading - Senate
+export async function getSenateTradesLatest(page = 0, limit = 100) {
+  const cacheKey = `fmp:senate:latest:${page}:${limit}`;
+  const ttl = config.cacheTTL.politicalTrades || 3600;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/senate-latest?page=${page}&limit=${limit}`);
+      setMemoryCache(cacheKey, data, ttl);
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.error('FMP senate trades error:', err.message);
+      return [];
+    }
+  });
+}
+
+export async function getSenateTradesBySymbol(ticker) {
+  const cacheKey = getCacheKey('senateTrades', ticker);
+  const ttl = config.cacheTTL.politicalTrades || 3600;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/senate-trades?symbol=${ticker}`);
+      setMemoryCache(cacheKey, data, ttl);
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn(`FMP senate trades not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+// Congress Trading - House
+export async function getHouseTradesLatest(page = 0, limit = 100) {
+  const cacheKey = `fmp:house:latest:${page}:${limit}`;
+  const ttl = config.cacheTTL.politicalTrades || 3600;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/house-latest?page=${page}&limit=${limit}`);
+      setMemoryCache(cacheKey, data, ttl);
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.error('FMP house trades error:', err.message);
+      return [];
+    }
+  });
+}
+
+export async function getHouseTradesBySymbol(ticker) {
+  const cacheKey = getCacheKey('houseTrades', ticker);
+  const ttl = config.cacheTTL.politicalTrades || 3600;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/house-trades?symbol=${ticker}`);
+      setMemoryCache(cacheKey, data, ttl);
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn(`FMP house trades not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+// Insider Trading
+export async function getInsiderTradesLatest(page = 0, limit = 100) {
+  const cacheKey = `fmp:insider:latest:${page}:${limit}`;
+  const ttl = config.cacheTTL.politicalTrades || 3600;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/insider-trading-latest?page=${page}&limit=${limit}`);
+      setMemoryCache(cacheKey, data, ttl);
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.error('FMP insider trades error:', err.message);
+      return [];
+    }
+  });
+}
+
+export async function getInsiderTradesBySymbol(ticker, page = 0) {
+  const cacheKey = getCacheKey('insiderTrades', ticker);
+  const ttl = config.cacheTTL.politicalTrades || 3600;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      // Use v4 API for symbol-specific insider trades
+      const url = `https://financialmodelingprep.com/api/v4/insider-trading?symbol=${ticker}&page=${page}&apikey=${config.fmpApiKey}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`FMP insider API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setMemoryCache(cacheKey, data, ttl);
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn(`FMP insider trades not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+// Stock Screener
+export async function screenStocks(filters = {}) {
+  const params = new URLSearchParams();
+
+  // Add supported filters
+  if (filters.marketCapMoreThan) params.append('marketCapMoreThan', filters.marketCapMoreThan);
+  if (filters.marketCapLowerThan) params.append('marketCapLowerThan', filters.marketCapLowerThan);
+  if (filters.priceMoreThan) params.append('priceMoreThan', filters.priceMoreThan);
+  if (filters.priceLowerThan) params.append('priceLowerThan', filters.priceLowerThan);
+  if (filters.betaMoreThan) params.append('betaMoreThan', filters.betaMoreThan);
+  if (filters.betaLowerThan) params.append('betaLowerThan', filters.betaLowerThan);
+  if (filters.volumeMoreThan) params.append('volumeMoreThan', filters.volumeMoreThan);
+  if (filters.volumeLowerThan) params.append('volumeLowerThan', filters.volumeLowerThan);
+  if (filters.dividendMoreThan) params.append('dividendMoreThan', filters.dividendMoreThan);
+  if (filters.dividendLowerThan) params.append('dividendLowerThan', filters.dividendLowerThan);
+  if (filters.sector) params.append('sector', filters.sector);
+  if (filters.industry) params.append('industry', filters.industry);
+  if (filters.exchange) params.append('exchange', filters.exchange);
+  if (filters.country) params.append('country', filters.country || 'US');
+  if (filters.isEtf !== undefined) params.append('isEtf', filters.isEtf);
+  if (filters.isFund !== undefined) params.append('isFund', filters.isFund);
+  if (filters.isActivelyTrading !== undefined) params.append('isActivelyTrading', filters.isActivelyTrading);
+  params.append('limit', filters.limit || 50);
+
+  const cacheKey = `fmp:screener:${params.toString()}`;
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/company-screener?${params.toString()}`);
+
+      const formatted = (Array.isArray(data) ? data : []).map(item => ({
+        symbol: item.symbol,
+        companyName: item.companyName,
+        marketCap: item.marketCap,
+        sector: item.sector,
+        industry: item.industry,
+        beta: item.beta,
+        price: item.price,
+        lastAnnualDividend: item.lastAnnualDividend,
+        volume: item.volume,
+        exchange: item.exchangeShortName || item.exchange,
+        country: item.country,
+        isEtf: item.isEtf,
+        isFund: item.isFund,
+        isActivelyTrading: item.isActivelyTrading
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error('FMP screener error:', err.message);
+      return [];
+    }
+  });
+}
+
+// SEC Filings
+export async function getSecFilings(ticker, limit = 20) {
+  const cacheKey = getCacheKey('secFilings', ticker);
+  const ttl = 86400; // 24 hours
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      // Use v3 API for SEC filings
+      const url = `https://financialmodelingprep.com/api/v3/sec_filings/${ticker}?limit=${limit}&apikey=${config.fmpApiKey}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`FMP SEC filings API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      const formatted = (Array.isArray(data) ? data : []).map(item => ({
+        symbol: item.symbol,
+        cik: item.cik,
+        formType: item.type,
+        filingDate: item.fillingDate,
+        acceptedDate: item.acceptedDate,
+        link: item.link,
+        finalLink: item.finalLink
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP SEC filings not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+export async function getEarningsSurprises(ticker, limit = 8) {
+  const cacheKey = getCacheKey('earningsSurprises', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/earnings-surprises?symbol=${ticker}`);
+
+      const formatted = (Array.isArray(data) ? data : []).slice(0, limit).map(item => ({
+        date: item.date,
+        symbol: item.symbol,
+        actualEarningsResult: item.actualEarningResult,
+        estimatedEarning: item.estimatedEarning,
+        revenue: item.revenue,
+        revenueEstimated: item.revenueEstimated,
+        surprisePercent: item.actualEarningResult && item.estimatedEarning
+          ? ((item.actualEarningResult - item.estimatedEarning) / Math.abs(item.estimatedEarning) * 100)
+          : null,
+        revenueSurprisePercent: item.revenue && item.revenueEstimated
+          ? ((item.revenue - item.revenueEstimated) / Math.abs(item.revenueEstimated) * 100)
+          : null
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP earnings surprises not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+export async function getAnalystGrades(ticker, limit = 20) {
+  const cacheKey = getCacheKey('analystGrades', ticker);
+  const ttl = config.cacheTTL.valuation;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/upgrades-downgrades?symbol=${ticker}`);
+
+      const formatted = (Array.isArray(data) ? data : []).slice(0, limit).map(item => ({
+        symbol: item.symbol,
+        publishedDate: item.publishedDate,
+        gradingCompany: item.gradingCompany,
+        newGrade: item.newGrade,
+        previousGrade: item.previousGrade,
+        action: item.action // upgrade, downgrade, maintain, init
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP analyst grades not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+// Historical OHLCV for candlestick charts
+export async function getOHLCV(ticker, period = '1y') {
+  const cacheKey = getCacheKey('ohlcv', ticker, period);
+  const ttl = config.cacheTTL.priceHistory;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/historical-price-eod/full?symbol=${ticker}`);
+
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error('No OHLCV data');
+      }
+
+      const endDate = new Date();
+      const startDate = new Date();
+
+      switch (period) {
+        case '1d': startDate.setDate(startDate.getDate() - 1); break;
+        case '5d': startDate.setDate(startDate.getDate() - 5); break;
+        case '1m': startDate.setMonth(startDate.getMonth() - 1); break;
+        case '3m': startDate.setMonth(startDate.getMonth() - 3); break;
+        case '6m': startDate.setMonth(startDate.getMonth() - 6); break;
+        case 'ytd':
+          startDate.setMonth(0);
+          startDate.setDate(1);
+          break;
+        case '1y': startDate.setFullYear(startDate.getFullYear() - 1); break;
+        case '5y': startDate.setFullYear(startDate.getFullYear() - 5); break;
+        case '10y': startDate.setFullYear(startDate.getFullYear() - 10); break;
+        default: startDate.setFullYear(startDate.getFullYear() - 1);
+      }
+
+      const history = data
+        .filter(item => new Date(item.date) >= startDate)
+        .map(item => ({
+          time: item.date,
+          open: item.open,
+          high: item.high,
+          low: item.low,
+          close: item.close,
+          volume: item.volume
+        }))
+        .reverse();
+
+      setMemoryCache(cacheKey, history, ttl);
+      return history;
+    } catch (err) {
+      console.error(`FMP OHLCV error for ${ticker}:`, err.message);
+      throw new Error(`Failed to fetch OHLCV data for ${ticker}`);
+    }
+  });
+}
+
+// Batch quotes for multiple tickers
+export async function getBatchQuotes(tickers) {
+  const symbols = Array.isArray(tickers) ? tickers.join(',') : tickers;
+  const cacheKey = `fmp:batchQuotes:${symbols}`;
+  const ttl = config.cacheTTL.quote;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/quote?symbol=${symbols}`);
+      const quotes = Array.isArray(data) ? data : [data];
+
+      const formatted = quotes.map(quote => ({
+        ticker: quote.symbol,
+        name: quote.name,
+        price: quote.price,
+        change: quote.change,
+        changePercent: quote.changePercentage,
+        dayHigh: quote.dayHigh,
+        dayLow: quote.dayLow,
+        open: quote.open,
+        previousClose: quote.previousClose,
+        volume: quote.volume,
+        avgVolume: null,
+        marketCap: quote.marketCap,
+        peRatio: null,
+        eps: null,
+        fiftyTwoWeekHigh: quote.yearHigh,
+        fiftyTwoWeekLow: quote.yearLow,
+        exchange: quote.exchange
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error('FMP batch quotes error:', err.message);
+      return [];
+    }
+  });
+}
+
 export default {
   getProfile,
   getQuote,
@@ -1248,16 +1710,32 @@ export default {
   getFinancialRatios,
   getEnterpriseValue,
   getStockNews,
+  getGeneralNews,
   getDividends,
   getStockSplits,
   getPriceTarget,
   getStockPeers,
   getRevenueSegments,
+  getProductRevenue,
+  getGeographicRevenue,
   getInstitutionalHolders,
   getEarningsCalendar,
   searchSymbols,
   bulkRefreshProfiles,
   bulkRefreshFinancials,
   clearCache,
-  getCacheStats
+  getCacheStats,
+  // FMP congress, insider, screener endpoints
+  getSenateTradesLatest,
+  getSenateTradesBySymbol,
+  getHouseTradesLatest,
+  getHouseTradesBySymbol,
+  getInsiderTradesLatest,
+  getInsiderTradesBySymbol,
+  screenStocks,
+  getSecFilings,
+  getOHLCV,
+  getBatchQuotes,
+  getEarningsSurprises,
+  getAnalystGrades
 };

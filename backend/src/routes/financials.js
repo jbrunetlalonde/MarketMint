@@ -217,7 +217,7 @@ router.get('/:ticker/history', async (req, res, next) => {
       throw new ApiError(400, validation.error);
     }
 
-    const validPeriods = ['1d', '5d', '1m', '3m', '6m', '1y', '5y'];
+    const validPeriods = ['1d', '5d', '1m', '3m', '6m', 'ytd', '1y', '5y', '10y'];
     if (!validPeriods.includes(period)) {
       throw new ApiError(400, `Invalid period. Use: ${validPeriods.join(', ')}`);
     }
@@ -552,6 +552,224 @@ router.get('/earnings/calendar', async (req, res, next) => {
     } catch (err) {
       logger.warn('Earnings calendar fetch failed', { error: err.message });
       res.json({ success: true, data: [] });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/earnings-history
+ * Get earnings surprises history
+ */
+router.get('/:ticker/earnings-history', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+    const { limit = 8 } = req.query;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getEarningsSurprises(validation.ticker, parseInt(limit));
+      res.json({ success: true, data });
+    } catch (err) {
+      res.json({ success: true, data: [] });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/sec-filings
+ * Get SEC filings
+ */
+router.get('/:ticker/sec-filings', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+    const { limit = 20 } = req.query;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getSecFilings(validation.ticker, parseInt(limit));
+      res.json({ success: true, data });
+    } catch (err) {
+      res.json({ success: true, data: [] });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/analyst-grades
+ * Get analyst upgrade/downgrade history
+ */
+router.get('/:ticker/analyst-grades', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+    const { limit = 20 } = req.query;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getAnalystGrades(validation.ticker, parseInt(limit));
+      res.json({ success: true, data });
+    } catch (err) {
+      res.json({ success: true, data: [] });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/insider-trades
+ * Get insider trades for a stock
+ */
+router.get('/:ticker/insider-trades', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+    const { limit = 20 } = req.query;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getInsiderTradesBySymbol(validation.ticker);
+      res.json({ success: true, data: data.slice(0, parseInt(limit)) });
+    } catch (err) {
+      res.json({ success: true, data: [] });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/key-metrics
+ * Get key financial metrics for scorecard
+ */
+router.get('/:ticker/key-metrics', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const [metrics, ratios] = await Promise.all([
+        fmp.getKeyMetrics(validation.ticker, 1),
+        fmp.getFinancialRatios(validation.ticker, 1)
+      ]);
+
+      const m = metrics[0] || {};
+      const r = ratios[0] || {};
+
+      res.json({
+        success: true,
+        data: {
+          peRatio: m.peRatioTTM || m.peRatio,
+          pbRatio: m.pbRatioTTM || m.pbRatio,
+          debtToEquity: m.debtToEquityTTM || m.debtToEquity,
+          currentRatio: m.currentRatioTTM || m.currentRatio || r.currentRatio,
+          roe: m.roeTTM || m.roe || r.returnOnEquity,
+          roa: m.roaTTM || m.roa || r.returnOnAssets,
+          dividendYield: m.dividendYieldTTM || m.dividendYield,
+          grossProfitMargin: r.grossProfitMargin,
+          operatingProfitMargin: r.operatingProfitMargin,
+          netProfitMargin: r.netProfitMargin
+        }
+      });
+    } catch (err) {
+      res.json({ success: true, data: null });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/revenue-segments
+ * Get revenue by product and geographic segments
+ */
+router.get('/:ticker/revenue-segments', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const [productData, geoData] = await Promise.all([
+        fmp.getProductRevenue(validation.ticker),
+        fmp.getGeographicRevenue(validation.ticker)
+      ]);
+
+      // Transform the data into flat arrays
+      const productSegments = [];
+      const geographicSegments = [];
+
+      // Process product revenue
+      if (Array.isArray(productData) && productData.length > 0) {
+        const latestYear = productData[0];
+        const year = new Date(latestYear.date || latestYear.fiscalYear || '').getFullYear() || new Date().getFullYear();
+        for (const [key, value] of Object.entries(latestYear)) {
+          if (key !== 'date' && key !== 'symbol' && key !== 'fiscalYear' && typeof value === 'number' && value > 0) {
+            const segment = key
+              .replace(/([A-Z])/g, ' $1')
+              .replace(/^./, s => s.toUpperCase())
+              .replace('Revenue', '')
+              .trim();
+            productSegments.push({ segment, revenue: value, year });
+          }
+        }
+      }
+
+      // Process geographic revenue
+      if (Array.isArray(geoData) && geoData.length > 0) {
+        const latestYear = geoData[0];
+        const year = new Date(latestYear.date || latestYear.fiscalYear || '').getFullYear() || new Date().getFullYear();
+        for (const [key, value] of Object.entries(latestYear)) {
+          if (key !== 'date' && key !== 'symbol' && key !== 'fiscalYear' && typeof value === 'number' && value > 0) {
+            const segment = key
+              .replace(/([A-Z])/g, ' $1')
+              .replace(/^./, s => s.toUpperCase())
+              .replace('Revenue', '')
+              .trim();
+            geographicSegments.push({ segment, revenue: value, year });
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          productSegments: productSegments.sort((a, b) => b.revenue - a.revenue),
+          geographicSegments: geographicSegments.sort((a, b) => b.revenue - a.revenue)
+        }
+      });
+    } catch (err) {
+      res.json({
+        success: true,
+        data: { productSegments: [], geographicSegments: [] }
+      });
     }
   } catch (err) {
     next(err);

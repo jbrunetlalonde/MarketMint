@@ -1,11 +1,10 @@
 import { config } from '../config/env.js';
 import { query, getClient } from '../config/database.js';
 import { LRUCache } from 'lru-cache';
+import fmp from './financialModelPrep.js';
 
 // PostgreSQL parameter limit
 const POSTGRES_PARAM_LIMIT = 65535;
-
-const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 
 // LRU cache with size limits to prevent memory leaks
 const memoryCache = new LRUCache({
@@ -27,7 +26,7 @@ const memoryCache = new LRUCache({
 const pendingRequests = new Map();
 
 function getCacheKey(type, param = '') {
-  return `finnhub:${type}${param ? `:${param}` : ''}`;
+  return `congress:${type}${param ? `:${param}` : ''}`;
 }
 
 function getFromMemoryCache(key) {
@@ -51,35 +50,14 @@ async function deduplicatedRequest(key, fetchFn) {
   return promise;
 }
 
-async function fetchFinnhub(endpoint) {
-  if (!config.finnhubApiKey) {
-    throw new Error('FINNHUB_API_KEY not configured. Please add your Finnhub API key to .env');
-  }
-
-  const url = `${FINNHUB_BASE_URL}${endpoint}${endpoint.includes('?') ? '&' : '?'}token=${config.finnhubApiKey}`;
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Invalid Finnhub API key');
-    }
-    if (response.status === 429) {
-      throw new Error('Finnhub rate limit exceeded');
-    }
-    throw new Error(`Finnhub API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
-}
-
-// Map Finnhub transaction type to our schema
+// Map FMP transaction type to our schema
 function mapTransactionType(type) {
   if (!type) return 'BUY';
   const upper = type.toUpperCase();
   if (upper.includes('SALE') || upper.includes('SELL')) return 'SELL';
   if (upper.includes('PURCHASE') || upper.includes('BUY')) return 'BUY';
   if (upper.includes('EXCHANGE')) return 'EXCHANGE';
-  return 'BUY';
+  return upper.includes('P') ? 'BUY' : 'SELL';
 }
 
 // Format amount range for display
@@ -331,7 +309,43 @@ async function getTradesFromDB(options = {}) {
   }));
 }
 
-// Get congressional trades for a specific ticker from Finnhub
+// Transform FMP trade data to our standard format
+function transformFMPTrade(item, chamber) {
+  const title = chamber === 'senate' ? 'Senator' : 'Representative';
+  return {
+    officialName: item.representative || item.firstName + ' ' + item.lastName || 'Unknown',
+    ticker: item.ticker || item.symbol,
+    assetDescription: item.assetDescription || item.asset,
+    transactionType: mapTransactionType(item.type || item.transactionType),
+    transactionDate: item.transactionDate,
+    reportedDate: item.disclosureDate,
+    amountMin: parseAmountBound(item.amount, 'min'),
+    amountMax: parseAmountBound(item.amount, 'max'),
+    amountDisplay: item.amount || 'Unknown',
+    position: title,
+    chamber,
+    party: item.party || null,
+    state: item.state || item.district?.slice(0, 2) || null,
+    district: item.district || null
+  };
+}
+
+// Parse amount string like "$1,001 - $15,000" to min/max bounds
+function parseAmountBound(amountStr, bound) {
+  if (!amountStr) return null;
+  const cleaned = amountStr.replace(/[$,]/g, '');
+  const match = cleaned.match(/(\d+)\s*-\s*(\d+)/);
+  if (match) {
+    return bound === 'min' ? parseInt(match[1], 10) : parseInt(match[2], 10);
+  }
+  const singleMatch = cleaned.match(/(\d+)/);
+  if (singleMatch) {
+    return parseInt(singleMatch[1], 10);
+  }
+  return null;
+}
+
+// Get congressional trades for a specific ticker from FMP
 export async function getCongressionalTrades(ticker) {
   const cacheKey = getCacheKey('congressional', ticker);
   const ttl = config.cacheTTL.politicalTrades;
@@ -341,49 +355,55 @@ export async function getCongressionalTrades(ticker) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFinnhub(`/stock/congressional-trading?symbol=${ticker}`);
+      // Fetch from both Senate and House endpoints
+      const [senateTrades, houseTrades] = await Promise.all([
+        fmp.getSenateTradesBySymbol(ticker),
+        fmp.getHouseTradesBySymbol(ticker)
+      ]);
 
-      if (!data || !Array.isArray(data.data)) {
+      const allTrades = [
+        ...senateTrades.map(t => transformFMPTrade(t, 'senate')),
+        ...houseTrades.map(t => transformFMPTrade(t, 'house'))
+      ];
+
+      if (allTrades.length === 0) {
+        // Fallback to database
+        const dbTrades = await getTradesFromDB({ ticker, limit: 50 });
+        if (dbTrades.length > 0) {
+          return dbTrades;
+        }
         return [];
       }
 
-      const trades = data.data.map(item => ({
-        officialName: item.name,
-        ticker: data.symbol || ticker,
-        assetDescription: item.assetName,
-        transactionType: mapTransactionType(item.transactionType),
-        transactionDate: item.transactionDate,
-        reportedDate: item.filingDate,
-        amountMin: item.amountFrom,
-        amountMax: item.amountTo,
-        amountDisplay: formatAmountRange(item.amountFrom, item.amountTo),
-        position: item.position,
-        chamber: parseChamber(item.position),
-        ownerType: item.ownerType
-      }));
-
       // Save to database for persistence
-      await saveBulkTrades(trades);
+      await saveBulkTrades(allTrades);
 
       // Extract unique officials and bulk upsert them
       const officialMap = new Map();
-      for (const trade of trades) {
+      for (const trade of allTrades) {
         if (!officialMap.has(trade.officialName)) {
           officialMap.set(trade.officialName, {
             name: trade.officialName,
             title: trade.position,
-            party: null,
-            state: null,
-            district: null
+            party: trade.party,
+            state: trade.state,
+            district: trade.district
           });
         }
       }
       await upsertBulkOfficials([...officialMap.values()]);
 
-      setMemoryCache(cacheKey, trades, ttl);
-      return trades;
+      // Sort by date
+      allTrades.sort((a, b) => {
+        const dateA = new Date(b.reportedDate || b.transactionDate || 0);
+        const dateB = new Date(a.reportedDate || a.transactionDate || 0);
+        return dateA - dateB;
+      });
+
+      setMemoryCache(cacheKey, allTrades, ttl);
+      return allTrades;
     } catch (err) {
-      console.error(`Finnhub congressional trades error for ${ticker}:`, err.message);
+      console.error(`FMP congressional trades error for ${ticker}:`, err.message);
 
       // Fallback to database if API fails
       const dbTrades = await getTradesFromDB({ ticker, limit: 50 });
@@ -396,34 +416,106 @@ export async function getCongressionalTrades(ticker) {
   });
 }
 
-// Get all recent trades (aggregated from multiple tickers)
+// Get all recent trades from FMP's latest endpoints
 export async function getRecentTrades(options = {}) {
   const { party, chamber, transactionType, ticker, limit = 50 } = options;
 
-  // First check database for recent trades
-  const dbTrades = await getTradesFromDB({ party, chamber, transactionType, ticker, limit });
+  // If ticker is specified, use the ticker-specific endpoint
+  if (ticker) {
+    return getCongressionalTrades(ticker);
+  }
 
+  // First check database for recent trades
+  const dbTrades = await getTradesFromDB({ party, chamber, transactionType, limit });
   if (dbTrades.length > 0) {
     return dbTrades;
   }
 
-  // If database is empty, fetch from common tickers
-  const commonTickers = ['AAPL', 'MSFT', 'GOOGL', 'NVDA', 'TSLA', 'AMZN', 'META'];
-  const allTrades = [];
+  // Fetch latest trades from FMP
+  const cacheKey = getCacheKey('latestTrades', `${party || 'all'}:${chamber || 'all'}`);
+  const ttl = config.cacheTTL.politicalTrades;
 
-  for (const t of commonTickers.slice(0, 3)) {
-    try {
-      const trades = await getCongressionalTrades(t);
-      allTrades.push(...trades);
-    } catch (err) {
-      console.warn(`Failed to fetch trades for ${t}:`, err.message);
-    }
+  const memCached = getFromMemoryCache(cacheKey);
+  if (memCached) {
+    return applyFilters(memCached, { party, chamber, transactionType, limit });
   }
 
-  // Sort by date and limit
-  return allTrades
-    .sort((a, b) => new Date(b.reportedDate || b.transactionDate) - new Date(a.reportedDate || a.transactionDate))
-    .slice(0, limit);
+  try {
+    // Fetch from both chambers' latest endpoints
+    const [senateTrades, houseTrades] = await Promise.all([
+      chamber !== 'house' ? fmp.getSenateTradesLatest(0, 100) : Promise.resolve([]),
+      chamber !== 'senate' ? fmp.getHouseTradesLatest(0, 100) : Promise.resolve([])
+    ]);
+
+    const allTrades = [
+      ...senateTrades.map(t => transformFMPTrade(t, 'senate')),
+      ...houseTrades.map(t => transformFMPTrade(t, 'house'))
+    ];
+
+    if (allTrades.length === 0) {
+      return [];
+    }
+
+    // Save to database for persistence
+    await saveBulkTrades(allTrades);
+
+    // Extract unique officials and bulk upsert them
+    const officialMap = new Map();
+    for (const trade of allTrades) {
+      if (!officialMap.has(trade.officialName)) {
+        officialMap.set(trade.officialName, {
+          name: trade.officialName,
+          title: trade.position,
+          party: trade.party,
+          state: trade.state,
+          district: trade.district
+        });
+      }
+    }
+    await upsertBulkOfficials([...officialMap.values()]);
+
+    // Sort by date
+    allTrades.sort((a, b) => {
+      const dateA = new Date(b.reportedDate || b.transactionDate || 0);
+      const dateB = new Date(a.reportedDate || a.transactionDate || 0);
+      return dateA - dateB;
+    });
+
+    setMemoryCache(cacheKey, allTrades, ttl);
+    return applyFilters(allTrades, { party, chamber, transactionType, limit });
+  } catch (err) {
+    console.error('FMP latest trades error:', err.message);
+    return [];
+  }
+}
+
+// Apply filters to trades list
+function applyFilters(trades, { party, chamber, transactionType, limit }) {
+  let result = trades;
+
+  if (party) {
+    const partyLower = party.toLowerCase();
+    result = result.filter(t => {
+      const tParty = (t.party || '').toLowerCase();
+      if (partyLower === 'd' || partyLower === 'democrat') {
+        return tParty.includes('democrat') || tParty === 'd';
+      }
+      if (partyLower === 'r' || partyLower === 'republican') {
+        return tParty.includes('republican') || tParty === 'r';
+      }
+      return true;
+    });
+  }
+
+  if (chamber) {
+    result = result.filter(t => t.chamber === chamber);
+  }
+
+  if (transactionType) {
+    result = result.filter(t => t.transactionType === transactionType.toUpperCase());
+  }
+
+  return result.slice(0, limit);
 }
 
 // Get all officials with portraits
@@ -697,7 +789,7 @@ export function clearCache(ticker = null) {
     memoryCache.delete(cacheKey);
   } else {
     for (const key of memoryCache.keys()) {
-      if (key.startsWith('finnhub:')) {
+      if (key.startsWith('congress:')) {
         memoryCache.delete(key);
       }
     }

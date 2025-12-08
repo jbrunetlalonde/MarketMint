@@ -1,25 +1,21 @@
-import { config } from '../config/env.js';
 import { LRUCache } from 'lru-cache';
-
-const FMP_BASE_URL = 'https://financialmodelingprep.com/stable';
+import fmp from './financialModelPrep.js';
 
 // LRU cache with size limits to prevent memory leaks
 const memoryCache = new LRUCache({
-  max: 500,                    // Max 500 entries
-  maxSize: 50 * 1024 * 1024,   // Max 50MB total
+  max: 500,
+  maxSize: 50 * 1024 * 1024,
   sizeCalculation: (value) => {
     try {
       return JSON.stringify(value).length;
     } catch {
-      return 1000; // Default size if stringify fails
+      return 1000;
     }
   },
-  ttl: 1000 * 60 * 60,         // Default 1 hour TTL
-  updateAgeOnGet: true,        // Reset TTL on access
+  ttl: 1000 * 60 * 60,
+  updateAgeOnGet: true,
   allowStale: false
 });
-
-const pendingRequests = new Map();
 
 function getCacheKey(type, param = '') {
   return `insider:${type}${param ? `:${param}` : ''}`;
@@ -31,35 +27,6 @@ function getFromMemoryCache(key) {
 
 function setMemoryCache(key, data, ttlSeconds) {
   memoryCache.set(key, data, { ttl: ttlSeconds * 1000 });
-}
-
-async function deduplicatedRequest(key, fetchFn) {
-  if (pendingRequests.has(key)) {
-    return pendingRequests.get(key);
-  }
-
-  const promise = fetchFn().finally(() => {
-    pendingRequests.delete(key);
-  });
-
-  pendingRequests.set(key, promise);
-  return promise;
-}
-
-async function fetchFMP(endpoint) {
-  if (!config.fmpApiKey) {
-    throw new Error('FMP_API_KEY not configured');
-  }
-
-  const url = `${FMP_BASE_URL}${endpoint}${endpoint.includes('?') ? '&' : '?'}apikey=${config.fmpApiKey}`;
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error(`FMP API error: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data;
 }
 
 // Mock data for when FMP API key is not configured
@@ -199,49 +166,50 @@ function getMockTrades(options = {}) {
 export async function getInsiderTrades(options = {}) {
   const { ticker, page = 0, limit = 100 } = options;
   const cacheKey = getCacheKey('trades', ticker || 'all');
-  const ttl = 3600; // 1 hour cache
+  const ttl = 3600;
 
   const cached = getFromMemoryCache(cacheKey);
   if (cached) return cached;
 
-  return deduplicatedRequest(cacheKey, async () => {
-    try {
-      let endpoint = `/insider-trading?page=${page}`;
-      if (ticker) {
-        endpoint = `/insider-trading?symbol=${ticker}&page=${page}`;
-      }
+  try {
+    let data;
+    if (ticker) {
+      data = await fmp.getInsiderTradesBySymbol(ticker, page);
+    } else {
+      data = await fmp.getInsiderTradesLatest(page, limit);
+    }
 
-      const data = await fetchFMP(endpoint);
-
-      if (!Array.isArray(data) || data.length === 0) {
-        console.warn('No insider trading data from FMP, using mock data');
-        return getMockTrades({ ticker, limit });
-      }
-
-      const formatted = data.slice(0, limit).map((item, index) => ({
-        id: index + 1,
-        symbol: item.symbol,
-        companyName: item.companyName || item.symbol,
-        reporterName: item.reportingName,
-        reporterTitle: item.typeOfOwner,
-        transactionType: item.transactionType?.toUpperCase() === 'P' ? 'PURCHASE' :
-                         item.transactionType?.toUpperCase() === 'S' ? 'SALE' :
-                         item.transactionType?.toUpperCase() || 'UNKNOWN',
-        transactionDate: item.transactionDate,
-        filingDate: item.filingDate,
-        sharesTransacted: item.securitiesTransacted,
-        sharePrice: item.price,
-        totalValue: item.securitiesTransacted * (item.price || 0),
-        sharesOwned: item.securitiesOwned
-      }));
-
-      setMemoryCache(cacheKey, formatted, ttl);
-      return formatted;
-    } catch (err) {
-      console.warn('FMP insider trading failed, using mock data:', err.message);
+    if (!Array.isArray(data) || data.length === 0) {
+      console.warn('No insider trading data from FMP, using mock data');
       return getMockTrades({ ticker, limit });
     }
-  });
+
+    const formatted = formatInsiderTrades(data, limit);
+    setMemoryCache(cacheKey, formatted, ttl);
+    return formatted;
+  } catch (err) {
+    console.warn('FMP insider trading failed, using mock data:', err.message);
+    return getMockTrades({ ticker, limit });
+  }
+}
+
+function formatInsiderTrades(data, limit = 100) {
+  return data.slice(0, limit).map((item, index) => ({
+    id: index + 1,
+    symbol: item.symbol,
+    companyName: item.companyName || item.symbol,
+    reporterName: item.reportingName,
+    reporterTitle: item.typeOfOwner,
+    transactionType: item.transactionType?.toUpperCase() === 'P' ? 'PURCHASE' :
+                     item.transactionType?.toUpperCase() === 'S' ? 'SALE' :
+                     item.transactionType?.toUpperCase() || 'UNKNOWN',
+    transactionDate: item.transactionDate,
+    filingDate: item.filingDate,
+    sharesTransacted: item.securitiesTransacted,
+    sharePrice: item.price,
+    totalValue: item.securitiesTransacted * (item.price || 0),
+    sharesOwned: item.securitiesOwned
+  }));
 }
 
 export async function getInsiderTradesByTicker(ticker) {
@@ -251,84 +219,45 @@ export async function getInsiderTradesByTicker(ticker) {
   const cached = getFromMemoryCache(cacheKey);
   if (cached) return cached;
 
-  return deduplicatedRequest(cacheKey, async () => {
-    try {
-      const data = await fetchFMP(`/insider-trading?symbol=${ticker}`);
+  try {
+    const data = await fmp.getInsiderTradesBySymbol(ticker);
 
-      if (!Array.isArray(data) || data.length === 0) {
-        return getMockTrades({ ticker, limit: 20 });
-      }
-
-      const formatted = data.slice(0, 50).map((item, index) => ({
-        id: index + 1,
-        symbol: item.symbol,
-        companyName: item.companyName || item.symbol,
-        reporterName: item.reportingName,
-        reporterTitle: item.typeOfOwner,
-        transactionType: item.transactionType?.toUpperCase() === 'P' ? 'PURCHASE' :
-                         item.transactionType?.toUpperCase() === 'S' ? 'SALE' :
-                         item.transactionType?.toUpperCase() || 'UNKNOWN',
-        transactionDate: item.transactionDate,
-        filingDate: item.filingDate,
-        sharesTransacted: item.securitiesTransacted,
-        sharePrice: item.price,
-        totalValue: item.securitiesTransacted * (item.price || 0),
-        sharesOwned: item.securitiesOwned
-      }));
-
-      setMemoryCache(cacheKey, formatted, ttl);
-      return formatted;
-    } catch (err) {
-      console.warn(`FMP insider trades for ${ticker} failed:`, err.message);
+    if (!Array.isArray(data) || data.length === 0) {
       return getMockTrades({ ticker, limit: 20 });
     }
-  });
+
+    const formatted = formatInsiderTrades(data, 50);
+    setMemoryCache(cacheKey, formatted, ttl);
+    return formatted;
+  } catch (err) {
+    console.warn(`FMP insider trades for ${ticker} failed:`, err.message);
+    return getMockTrades({ ticker, limit: 20 });
+  }
 }
 
 export async function getLatestInsiderTrades(limit = 50) {
   const cacheKey = getCacheKey('latest', String(limit));
-  const ttl = 1800; // 30 minutes
+  const ttl = 1800;
 
   const cached = getFromMemoryCache(cacheKey);
   if (cached) return cached;
 
-  return deduplicatedRequest(cacheKey, async () => {
-    try {
-      const data = await fetchFMP('/insider-trading?page=0');
+  try {
+    const data = await fmp.getInsiderTradesLatest(0, limit);
 
-      if (!Array.isArray(data) || data.length === 0) {
-        return getMockTrades({ limit });
-      }
-
-      // Sort by filing date desc and take top trades
-      const sorted = data
-        .sort((a, b) => new Date(b.filingDate) - new Date(a.filingDate))
-        .slice(0, limit);
-
-      const formatted = sorted.map((item, index) => ({
-        id: index + 1,
-        symbol: item.symbol,
-        companyName: item.companyName || item.symbol,
-        reporterName: item.reportingName,
-        reporterTitle: item.typeOfOwner,
-        transactionType: item.transactionType?.toUpperCase() === 'P' ? 'PURCHASE' :
-                         item.transactionType?.toUpperCase() === 'S' ? 'SALE' :
-                         item.transactionType?.toUpperCase() || 'UNKNOWN',
-        transactionDate: item.transactionDate,
-        filingDate: item.filingDate,
-        sharesTransacted: item.securitiesTransacted,
-        sharePrice: item.price,
-        totalValue: item.securitiesTransacted * (item.price || 0),
-        sharesOwned: item.securitiesOwned
-      }));
-
-      setMemoryCache(cacheKey, formatted, ttl);
-      return formatted;
-    } catch (err) {
-      console.warn('FMP latest insider trades failed:', err.message);
+    if (!Array.isArray(data) || data.length === 0) {
       return getMockTrades({ limit });
     }
-  });
+
+    // Sort by filing date desc
+    const sorted = data.sort((a, b) => new Date(b.filingDate) - new Date(a.filingDate));
+    const formatted = formatInsiderTrades(sorted, limit);
+    setMemoryCache(cacheKey, formatted, ttl);
+    return formatted;
+  } catch (err) {
+    console.warn('FMP latest insider trades failed:', err.message);
+    return getMockTrades({ limit });
+  }
 }
 
 export function getInsiderStats(trades) {
@@ -383,8 +312,7 @@ export function getCacheStats() {
   return {
     memoryCacheSize: memoryCache.size,
     memoryCacheMaxSize: memoryCache.max,
-    calculatedSize: memoryCache.calculatedSize,
-    pendingRequests: pendingRequests.size
+    calculatedSize: memoryCache.calculatedSize
   };
 }
 

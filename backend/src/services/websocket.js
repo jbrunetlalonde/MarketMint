@@ -1,4 +1,4 @@
-import yahooFinance from './yahooFinance.js';
+import fmp from './financialModelPrep.js';
 
 // Track client subscriptions: Map<WebSocket, Set<ticker>>
 const clientSubscriptions = new Map();
@@ -207,7 +207,7 @@ function handleDisconnect(ws) {
  */
 async function sendQuote(ws, ticker) {
   try {
-    const quote = await yahooFinance.getQuote(ticker);
+    const quote = await fmp.getQuote(ticker);
     if (ws.readyState === ws.OPEN) {
       ws.send(JSON.stringify({
         type: 'quote',
@@ -234,7 +234,7 @@ async function broadcastQuote(ticker) {
   if (!subscribers || subscribers.size === 0) return;
 
   try {
-    const quote = await yahooFinance.getQuote(ticker);
+    const quote = await fmp.getQuote(ticker);
     const message = JSON.stringify({
       type: 'quote_update',
       data: quote,

@@ -5,7 +5,6 @@ import fmp from './financialModelPrep.js';
 import { query } from '../config/database.js';
 import { tradingIdeas } from '../models/tradingIdeas.js';
 import { createIdeaAlert, cleanupOldAlerts } from './alerts.js';
-import { getBulkQuotes } from './yahooFinance.js';
 import { refreshCommonTickers } from './politicalTracker.js';
 
 // Track scheduled jobs
@@ -214,8 +213,8 @@ export async function runPriceAlertCheck() {
     // Get unique tickers
     const tickers = [...new Set(openIdeas.map(idea => idea.ticker))];
 
-    // Fetch current quotes
-    const quotes = await getBulkQuotes(tickers);
+    // Fetch current quotes using FMP
+    const quotes = await fmp.getBatchQuotes(tickers);
 
     let alertsCreated = 0;
 
@@ -298,7 +297,7 @@ export async function runWatchlistQuoteRefresh() {
 
     for (let i = 0; i < tickers.length; i += batchSize) {
       const batch = tickers.slice(i, i + batchSize);
-      await getBulkQuotes(batch);
+      await fmp.getBatchQuotes(batch);
       refreshed += batch.length;
     }
 

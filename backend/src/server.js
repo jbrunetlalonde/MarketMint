@@ -32,6 +32,7 @@ import tradingIdeasRoutes from './routes/tradingIdeas.js';
 import searchRoutes from './routes/search.js';
 import portfolioRoutes from './routes/portfolio.js';
 import insiderRoutes from './routes/insider.js';
+import screenerRoutes from './routes/screener.js';
 import { initializeScheduler } from './services/scheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -127,6 +128,8 @@ app.use('/api/ideas', tradingIdeasRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/insider', insiderRoutes);
+app.use('/api/screener', screenerRoutes);
+
 // Serve portraits with aggressive caching (1 year) - images are pre-generated and static
 app.use('/portraits', express.static(path.join(__dirname, '../portraits'), {
   maxAge: '1y',

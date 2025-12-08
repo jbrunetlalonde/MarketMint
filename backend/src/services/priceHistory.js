@@ -1,13 +1,5 @@
-import yahooFinance from 'yahoo-finance2';
+import fmp from './financialModelPrep.js';
 import { query } from '../config/database.js';
-import { config } from '../config/env.js';
-
-// Suppress yahoo-finance2 validation warnings
-yahooFinance.setGlobalConfig({
-  validation: {
-    logErrors: config.nodeEnv === 'development'
-  }
-});
 
 // Memory cache for recent requests
 const memoryCache = new Map();
@@ -104,31 +96,30 @@ async function findMissingRanges(ticker, startDate, endDate, existingDates) {
 }
 
 /**
- * Fetch historical data from Yahoo Finance
+ * Fetch historical data from FMP
  */
-async function fetchFromYahoo(ticker, startDate, endDate, interval = '1d') {
+async function fetchFromFMP(ticker, startDate, endDate) {
   try {
-    const result = await yahooFinance.chart(ticker, {
-      period1: startDate,
-      period2: endDate,
-      interval
-    });
+    const fromDate = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
+    const toDate = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
 
-    if (!result || !result.quotes) {
+    const data = await fmp.getHistoricalPrices(ticker, fromDate, toDate);
+
+    if (!Array.isArray(data) || data.length === 0) {
       return [];
     }
 
-    return result.quotes.map(q => ({
-      date: q.date,
+    return data.map(q => ({
+      date: new Date(q.date),
       open: q.open,
       high: q.high,
       low: q.low,
       close: q.close,
       volume: q.volume,
-      adjustedClose: q.adjclose || q.close
+      adjustedClose: q.adjClose || q.close
     })).filter(q => q.open != null && q.close != null);
   } catch (err) {
-    console.error(`Yahoo Finance historical error for ${ticker}:`, err.message);
+    console.error(`FMP historical error for ${ticker}:`, err.message);
     return [];
   }
 }
@@ -161,11 +152,18 @@ export async function getHistoricalOHLC(ticker, period = '1y') {
     case '6m':
       startDate.setMonth(startDate.getMonth() - 6);
       break;
+    case 'ytd':
+      startDate.setMonth(0);
+      startDate.setDate(1);
+      break;
     case '1y':
       startDate.setFullYear(startDate.getFullYear() - 1);
       break;
     case '5y':
       startDate.setFullYear(startDate.getFullYear() - 5);
+      break;
+    case '10y':
+      startDate.setFullYear(startDate.getFullYear() - 10);
       break;
     case 'max':
       startDate.setFullYear(startDate.getFullYear() - 20);
@@ -184,10 +182,10 @@ export async function getHistoricalOHLC(ticker, period = '1y') {
     return cached;
   }
 
-  // For intraday data, always fetch fresh (not stored in DB)
+  // For intraday data, use FMP intraday endpoint
   if (interval !== '1d') {
-    const data = await fetchFromYahoo(ticker, startDate, endDate, interval);
-    const formatted = formatOHLCData(data);
+    const data = await fmp.getOHLCV(ticker, period);
+    const formatted = formatOHLCData(data || []);
     setMemoryCache(cacheKey, formatted);
     return formatted;
   }
@@ -212,13 +210,13 @@ export async function getHistoricalOHLC(ticker, period = '1y') {
 
   // If coverage is low or data is stale, fetch from API
   if (coverageRatio < 0.8 || (lastDbDate && isDataStale(lastDbDate))) {
-    // Fetch fresh data from Yahoo
-    const yahooData = await fetchFromYahoo(ticker, startDate, endDate, '1d');
+    // Fetch fresh data from FMP
+    const fmpData = await fetchFromFMP(ticker, startDate, endDate);
 
-    if (yahooData.length > 0) {
+    if (fmpData.length > 0) {
       // Store to database for future use
-      await storeToDatabase(ticker, yahooData);
-      finalData = yahooData;
+      await storeToDatabase(ticker, fmpData);
+      finalData = fmpData;
     }
   }
 
