@@ -11,9 +11,169 @@
 		revenueEstimate?: number | null;
 	}
 
+	interface SearchResult {
+		symbol: string;
+		name: string;
+		exchange: string;
+	}
+
+	interface EarningsSearchResult extends EarningsEvent {
+		name?: string;
+	}
+
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let earnings = $state<EarningsEvent[]>([]);
+	let expandedDates = $state<Set<string>>(new Set());
+	let initializedExpanded = false;
+
+	// Search state
+	let searchQuery = $state('');
+	let searchInputRef: HTMLInputElement | undefined = $state();
+	let searchSuggestions = $state<SearchResult[]>([]);
+	let showSuggestions = $state(false);
+	let searchLoading = $state(false);
+	let allEarnings = $state<EarningsEvent[]>([]);
+	let allEarningsLoaded = $state(false);
+	let globalSearchResults = $state<EarningsSearchResult[]>([]);
+	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// Load all upcoming earnings (90 days) for global search
+	async function loadAllEarnings(): Promise<EarningsEvent[]> {
+		if (allEarningsLoaded && allEarnings.length > 0) return allEarnings;
+
+		const today = new Date();
+		const futureDate = new Date();
+		futureDate.setDate(futureDate.getDate() + 90);
+
+		const from = today.toISOString().split('T')[0];
+		const to = futureDate.toISOString().split('T')[0];
+
+		try {
+			const response = await api.getEarningsCalendar({ from, to });
+			if (response.success && response.data && response.data.length > 0) {
+				allEarnings = response.data;
+				allEarningsLoaded = true;
+				return allEarnings;
+			}
+		} catch {
+			// Continue with empty array
+		}
+		allEarningsLoaded = true;
+		return allEarnings;
+	}
+
+	// Debounced search function
+	async function handleSearchInput() {
+		const query = searchQuery.trim();
+
+		if (query.length < 1) {
+			searchSuggestions = [];
+			showSuggestions = false;
+			globalSearchResults = [];
+			return;
+		}
+
+		// Debounce
+		if (debounceTimer) clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(async () => {
+			searchLoading = true;
+			showSuggestions = true;
+
+			const upperQuery = query.toUpperCase();
+
+			// Use currently loaded earnings data + fetch global data in parallel
+			const [globalData, suggestionsResponse] = await Promise.all([
+				loadAllEarnings(),
+				api.searchSymbols(query, 8).catch(() => ({ success: false, data: [] }))
+			]);
+
+			// Combine current month earnings with global data (deduplicate by symbol+date)
+			const seen = new Set<string>();
+			const combinedEarnings: EarningsEvent[] = [];
+
+			// Add current month's earnings first (already loaded)
+			for (const e of earnings) {
+				const key = `${e.symbol}-${e.date}`;
+				if (!seen.has(key)) {
+					seen.add(key);
+					combinedEarnings.push(e);
+				}
+			}
+
+			// Add global earnings
+			for (const e of globalData) {
+				const key = `${e.symbol}-${e.date}`;
+				if (!seen.has(key)) {
+					seen.add(key);
+					combinedEarnings.push(e);
+				}
+			}
+
+			// Update suggestions
+			if (suggestionsResponse.success && suggestionsResponse.data) {
+				searchSuggestions = suggestionsResponse.data;
+			} else {
+				searchSuggestions = [];
+			}
+
+			// Search for exact and partial matches
+			const exactMatches = combinedEarnings.filter((e) => e.symbol === upperQuery);
+			const partialMatches = combinedEarnings.filter((e) =>
+				e.symbol !== upperQuery && e.symbol.startsWith(upperQuery)
+			);
+			const allMatches = [...exactMatches, ...partialMatches];
+
+			// Sort by date
+			allMatches.sort((a, b) => a.date.localeCompare(b.date));
+
+			// Enrich earnings with company names from suggestions
+			const nameMap = new Map(searchSuggestions.map((s) => [s.symbol, s.name]));
+			globalSearchResults = allMatches.map((e) => ({
+				...e,
+				name: nameMap.get(e.symbol)
+			}));
+
+			searchLoading = false;
+		}, 150);
+	}
+
+	function clearSearch() {
+		searchQuery = '';
+		searchSuggestions = [];
+		showSuggestions = false;
+		globalSearchResults = [];
+		if (searchInputRef) searchInputRef.focus();
+	}
+
+	function formatRelativeDate(dateStr: string): string {
+		const today = new Date();
+		today.setHours(0, 0, 0, 0);
+		const date = new Date(dateStr + 'T00:00:00');
+		const diffDays = Math.round((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+		if (diffDays === 0) return 'Today';
+		if (diffDays === 1) return 'Tomorrow';
+		if (diffDays < 7) return `In ${diffDays} days`;
+		if (diffDays < 14) return 'Next week';
+		return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+	}
+
+	function toggleDate(date: string) {
+		if (expandedDates.has(date)) {
+			expandedDates = new Set([...expandedDates].filter((d) => d !== date));
+		} else {
+			expandedDates = new Set([...expandedDates, date]);
+		}
+	}
+
+	function expandAll() {
+		expandedDates = new Set(groupedByDate.map(([date]) => date));
+	}
+
+	function collapseAll() {
+		expandedDates = new Set();
+	}
 
 	// Current month being displayed
 	let currentDate = $state(new Date());
@@ -47,6 +207,21 @@
 			}
 		}
 		return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+	});
+
+	// Expand first date by default when data loads
+	$effect(() => {
+		if (!initializedExpanded && groupedByDate.length > 0) {
+			expandedDates = new Set([groupedByDate[0][0]]);
+			initializedExpanded = true;
+		}
+	});
+
+	// Reset expanded state when month changes
+	$effect(() => {
+		// This triggers on currentDate change
+		currentDate;
+		initializedExpanded = false;
 	});
 
 	// Summary stats (count deduplicated entries)
@@ -140,8 +315,119 @@
 		</button>
 	</nav>
 
+
 	{#if !loading && earnings.length > 0}
-		<p class="summary">{totalReports} upcoming earnings across {totalDays} days</p>
+		<div class="summary-row">
+			<p class="summary">{totalReports} upcoming earnings across {totalDays} days</p>
+			<div class="expand-controls">
+				<div class="search-container">
+					<div class="search-input-wrapper">
+						<svg class="search-icon" width="12" height="12" viewBox="0 0 16 16" fill="none">
+							<path
+								d="M7 12C9.76142 12 12 9.76142 12 7C12 4.23858 9.76142 2 7 2C4.23858 2 2 4.23858 2 7C2 9.76142 4.23858 12 7 12Z"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
+							<path
+								d="M14 14L10.5 10.5"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
+						</svg>
+						<input
+							bind:this={searchInputRef}
+							type="text"
+							class="search-input"
+							placeholder="Search ticker..."
+							bind:value={searchQuery}
+							oninput={handleSearchInput}
+							onfocus={() => {
+								if (searchSuggestions.length > 0) showSuggestions = true;
+							}}
+							onblur={() => {
+								setTimeout(() => (showSuggestions = false), 150);
+							}}
+						/>
+						{#if searchLoading}
+							<div class="search-spinner"></div>
+						{:else if searchQuery}
+							<button class="clear-btn" onclick={clearSearch} aria-label="Clear search">
+								<svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+									<path
+										d="M10.5 3.5L3.5 10.5M3.5 3.5L10.5 10.5"
+										stroke="currentColor"
+										stroke-width="1.5"
+										stroke-linecap="round"
+									/>
+								</svg>
+							</button>
+						{/if}
+					</div>
+					{#if showSuggestions && !searchLoading && (globalSearchResults.length > 0 || searchSuggestions.length > 0)}
+						<div class="search-dropdown">
+							{#if globalSearchResults.length > 0}
+								{#each globalSearchResults.slice(0, 6) as result (result.symbol + result.date)}
+									<a
+										href="/ticker/{result.symbol}"
+										class="suggestion-item earnings-result"
+										onmousedown={(e) => e.preventDefault()}
+									>
+										<img
+											src={getCompanyLogoUrl(result.symbol)}
+											alt=""
+											class="suggestion-logo"
+											onerror={(e) => {
+												const img = e.currentTarget as HTMLImageElement;
+												img.style.display = 'none';
+											}}
+										/>
+										<div class="suggestion-info">
+											<span class="suggestion-symbol">{result.symbol}</span>
+											{#if result.name}
+												<span class="suggestion-name">{result.name}</span>
+											{/if}
+										</div>
+										<div class="earnings-date-badge">
+											<span class="earnings-date">{formatRelativeDate(result.date)}</span>
+											<span class="earnings-time">{result.time === 'bmo' ? 'BMO' : result.time === 'amc' ? 'AMC' : ''}</span>
+										</div>
+									</a>
+								{/each}
+							{:else}
+								<div class="no-earnings-msg">No earnings in next 90 days</div>
+								{#each searchSuggestions.slice(0, 4) as suggestion (suggestion.symbol)}
+									<a
+										href="/ticker/{suggestion.symbol}"
+										class="suggestion-item"
+										onmousedown={(e) => e.preventDefault()}
+									>
+										<img
+											src={getCompanyLogoUrl(suggestion.symbol)}
+											alt=""
+											class="suggestion-logo"
+											onerror={(e) => {
+												const img = e.currentTarget as HTMLImageElement;
+												img.style.display = 'none';
+											}}
+										/>
+										<div class="suggestion-info">
+											<span class="suggestion-symbol">{suggestion.symbol}</span>
+											<span class="suggestion-name">{suggestion.name}</span>
+										</div>
+									</a>
+								{/each}
+							{/if}
+						</div>
+					{/if}
+				</div>
+				<button class="expand-btn" onclick={expandAll}>Expand All</button>
+				<button class="expand-btn" onclick={collapseAll}>Collapse All</button>
+			</div>
+		</div>
 	{/if}
 
 	{#if loading}
@@ -170,9 +456,26 @@
 		<div class="calendar-container">
 			{#each groupedByDate as [date, events] (date)}
 				{@const dayInfo = formatDayHeader(date)}
+				{@const isExpanded = expandedDates.has(date)}
 				<div class="day-card" class:today={isToday(date)}>
-					<div class="day-header">
+					<button class="day-header" onclick={() => toggleDate(date)}>
 						<div class="day-info">
+							<svg
+								class="chevron"
+								class:expanded={isExpanded}
+								width="16"
+								height="16"
+								viewBox="0 0 16 16"
+								fill="none"
+							>
+								<path
+									d="M5 3L11 8L5 13"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
+							</svg>
 							<span class="day-num">{dayInfo.dayNum}</span>
 							<div class="day-text">
 								<span class="day-name">{dayInfo.dayName}</span>
@@ -180,24 +483,26 @@
 							</div>
 						</div>
 						<span class="report-count">{events.length} report{events.length !== 1 ? 's' : ''}</span>
-					</div>
-					<div class="ticker-grid">
-						{#each events as event (event.symbol)}
-							<a href="/ticker/{event.symbol}" class="ticker-card">
-								<img
-									src={getCompanyLogoUrl(event.symbol)}
-									alt=""
-									class="ticker-logo"
-									loading="lazy"
-									onerror={(e) => {
-										const img = e.currentTarget as HTMLImageElement;
-										img.style.display = 'none';
-									}}
-								/>
-								<span class="ticker-symbol">{event.symbol}</span>
-							</a>
-						{/each}
-					</div>
+					</button>
+					{#if isExpanded}
+						<div class="ticker-grid">
+							{#each events as event (event.symbol)}
+								<a href="/ticker/{event.symbol}" class="ticker-card">
+									<img
+										src={getCompanyLogoUrl(event.symbol)}
+										alt=""
+										class="ticker-logo"
+										loading="lazy"
+										onerror={(e) => {
+											const img = e.currentTarget as HTMLImageElement;
+											img.style.display = 'none';
+										}}
+									/>
+									<span class="ticker-symbol">{event.symbol}</span>
+								</a>
+							{/each}
+						</div>
+					{/if}
 				</div>
 			{/each}
 		</div>
@@ -273,11 +578,235 @@
 		color: var(--color-ink);
 	}
 
+	.summary-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 2rem;
+		flex-wrap: wrap;
+	}
+
 	.summary {
 		font-family: var(--font-mono);
 		font-size: 0.875rem;
 		color: var(--color-ink-muted);
-		margin-bottom: 2rem;
+		margin: 0;
+	}
+
+	.expand-controls {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.search-container {
+		position: relative;
+	}
+
+	.search-input-wrapper {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		background: transparent;
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		padding: 0.375rem 0.5rem;
+		transition: border-color 0.15s;
+		height: 30px;
+		box-sizing: border-box;
+	}
+
+	.search-icon {
+		color: var(--color-ink-muted);
+		flex-shrink: 0;
+		width: 12px;
+		height: 12px;
+	}
+
+	.search-input {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--color-ink);
+		background: transparent;
+		border: none;
+		outline: none;
+		width: 100px;
+		-webkit-appearance: none;
+		appearance: none;
+	}
+
+	.search-input:focus {
+		outline: none;
+		box-shadow: none;
+	}
+
+	.search-input-wrapper:focus-within {
+		border-color: var(--color-ink);
+		outline: none;
+	}
+
+	.search-input::placeholder {
+		color: var(--color-ink-muted);
+	}
+
+	.search-spinner {
+		width: 10px;
+		height: 10px;
+		border: 1.5px solid var(--color-border);
+		border-top-color: var(--color-ink);
+		border-radius: 50%;
+		animation: spin 0.6s linear infinite;
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	.clear-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		color: var(--color-ink-muted);
+		transition: color 0.15s;
+	}
+
+	.clear-btn:hover {
+		color: var(--color-ink);
+	}
+
+	.search-dropdown {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		margin-top: 4px;
+		background: var(--color-paper);
+		border: 1px solid var(--color-ink);
+		border-radius: 6px;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+		z-index: 100;
+		min-width: 280px;
+		max-height: 320px;
+		overflow-y: auto;
+	}
+
+	.no-earnings-msg {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		color: var(--color-ink-muted);
+		padding: 0.5rem 0.75rem;
+		background: var(--color-newsprint);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.suggestion-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		width: 100%;
+		padding: 0.5rem 0.75rem;
+		background: none;
+		border: none;
+		border-bottom: 1px solid var(--color-border);
+		cursor: pointer;
+		text-align: left;
+		text-decoration: none;
+		color: inherit;
+		transition: background 0.1s;
+	}
+
+	.suggestion-item:last-child {
+		border-bottom: none;
+	}
+
+	.suggestion-item:hover {
+		background: var(--color-newsprint);
+	}
+
+	.suggestion-logo {
+		width: 24px;
+		height: 24px;
+		object-fit: contain;
+		border-radius: 4px;
+		flex-shrink: 0;
+	}
+
+	.suggestion-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+		min-width: 0;
+		flex: 1;
+	}
+
+	.suggestion-symbol {
+		font-family: var(--font-mono);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: var(--color-ink);
+	}
+
+	.suggestion-name {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		color: var(--color-ink-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 140px;
+	}
+
+	.suggestion-item.earnings-result {
+		text-decoration: none;
+		color: inherit;
+	}
+
+	.earnings-date-badge {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 0;
+		margin-left: auto;
+		flex-shrink: 0;
+	}
+
+	.earnings-date {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		color: var(--color-ink);
+	}
+
+	.earnings-time {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		color: var(--color-ink-muted);
+	}
+
+	.expand-btn {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--color-ink-muted);
+		background: transparent;
+		border: 1px solid var(--color-border);
+		padding: 0 0.75rem;
+		height: 30px;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.15s;
+		white-space: nowrap;
+	}
+
+	.expand-btn:hover {
+		color: var(--color-ink);
+		border-color: var(--color-ink);
 	}
 
 	.loading-container {
@@ -387,15 +916,32 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		width: 100%;
 		padding: 0.875rem 1.25rem;
 		background: var(--color-ink);
 		color: var(--color-newsprint);
+		border: none;
+		cursor: pointer;
+		transition: opacity 0.15s;
+	}
+
+	.day-header:hover {
+		opacity: 0.9;
+	}
+
+	.chevron {
+		transition: transform 0.2s ease;
+		flex-shrink: 0;
+	}
+
+	.chevron.expanded {
+		transform: rotate(90deg);
 	}
 
 	.day-info {
 		display: flex;
 		align-items: center;
-		gap: 0.875rem;
+		gap: 0.625rem;
 	}
 
 	.day-num {
@@ -488,6 +1034,22 @@
 
 		.title {
 			font-size: 2rem;
+		}
+
+		.summary-row {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+
+		.expand-controls {
+			width: 100%;
+			flex-wrap: wrap;
+			justify-content: flex-start;
+		}
+
+		.search-dropdown {
+			min-width: 260px;
+			right: auto;
 		}
 
 		.ticker-grid {

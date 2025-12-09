@@ -263,15 +263,16 @@ function formatOHLCData(data) {
   if (!Array.isArray(data) || data.length === 0) return [];
 
   return data.map(d => {
-    // Handle various date formats safely
+    // Handle various date formats safely - support both 'date' and 'time' properties
     let time;
     try {
-      if (typeof d.date === 'string') {
-        time = d.date.split('T')[0];
-      } else if (d.date instanceof Date && !isNaN(d.date.getTime())) {
-        time = d.date.toISOString().split('T')[0];
-      } else if (d.date && !isNaN(new Date(d.date).getTime())) {
-        time = new Date(d.date).toISOString().split('T')[0];
+      const dateValue = d.date || d.time;
+      if (typeof dateValue === 'string') {
+        time = dateValue.split('T')[0];
+      } else if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+        time = dateValue.toISOString().split('T')[0];
+      } else if (dateValue && !isNaN(new Date(dateValue).getTime())) {
+        time = new Date(dateValue).toISOString().split('T')[0];
       } else {
         return null; // Skip invalid dates
       }

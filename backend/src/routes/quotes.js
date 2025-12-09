@@ -31,7 +31,7 @@ router.get('/sector-performance', async (req, res, next) => {
 
 /**
  * GET /api/quotes/movers
- * Get market movers: top gainers, losers, and most active stocks
+ * Get market movers: top gainers, losers, and most active stocks from FMP
  * IMPORTANT: This route must be before /:ticker to avoid matching "movers" as a ticker
  */
 router.get('/movers', async (req, res, next) => {
@@ -39,71 +39,50 @@ router.get('/movers', async (req, res, next) => {
     const { limit = 10 } = req.query;
     const maxLimit = Math.min(parseInt(limit) || 10, 20);
 
-    // Popular stocks to track for movers (30 stocks from various sectors)
-    const MOVER_TICKERS = [
-      // Tech
-      'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'AMD', 'TSLA', 'NFLX', 'ADBE',
-      // Financial
-      'JPM', 'BAC', 'WFC', 'GS', 'V', 'MA', 'BLK', 'C',
-      // Consumer
-      'WMT', 'HD', 'MCD', 'NKE', 'DIS', 'KO',
-      // Healthcare
-      'JNJ', 'UNH', 'PFE', 'MRK', 'ABBV', 'LLY'
-    ];
-
-    // First try batch quotes
-    let quotes = await fmp.getBatchQuotes(MOVER_TICKERS);
-
-    // If batch fails, fall back to individual fetching
-    if (!quotes || quotes.length === 0) {
-      logger.info('Batch quotes failed, fetching individual quotes for movers');
-      const quotePromises = MOVER_TICKERS.map(ticker =>
-        fmp.getQuote(ticker).catch(() => null)
-      );
-      quotes = (await Promise.all(quotePromises)).filter(Boolean);
-    }
-
-    if (!quotes || quotes.length === 0) {
-      return res.json({
-        success: true,
-        data: { gainers: [], losers: [], mostActive: [], timestamp: new Date().toISOString() }
-      });
-    }
-
-    // Filter for valid quotes with change data
-    const validQuotes = quotes.filter(q =>
-      q && q.ticker && q.price !== null && q.changePercent !== null
-    );
-
-    // Calculate gainers (sorted by highest positive change)
-    const gainers = [...validQuotes]
-      .filter(q => q.changePercent > 0)
-      .sort((a, b) => b.changePercent - a.changePercent)
-      .slice(0, maxLimit);
-
-    // Calculate losers (sorted by lowest negative change)
-    const losers = [...validQuotes]
-      .filter(q => q.changePercent < 0)
-      .sort((a, b) => a.changePercent - b.changePercent)
-      .slice(0, maxLimit);
-
-    // Calculate most active (sorted by volume)
-    const mostActive = [...validQuotes]
-      .filter(q => q.volume > 0)
-      .sort((a, b) => (b.volume || 0) - (a.volume || 0))
-      .slice(0, maxLimit);
+    // Use FMP's dedicated market movers API
+    const movers = await fmp.getMarketMovers(maxLimit);
 
     res.json({
       success: true,
       data: {
-        gainers,
-        losers,
-        mostActive,
+        gainers: movers.gainers || [],
+        losers: movers.losers || [],
+        mostActive: movers.mostActive || [],
         timestamp: new Date().toISOString()
       }
     });
   } catch (err) {
-    next(err);
+    logger.error('Market movers fetch failed', { error: err.message });
+    // Return empty data on error
+    res.json({
+      success: true,
+      data: { gainers: [], losers: [], mostActive: [], timestamp: new Date().toISOString() },
+      error: { code: 'FMP_ERROR', message: err.message }
+    });
+  }
+});
+
+/**
+ * GET /api/quotes/market-status
+ * Check if the market is currently open
+ */
+router.get('/market-status', async (req, res, next) => {
+  try {
+    const isOpen = await fmp.isMarketOpen();
+    res.json({
+      success: true,
+      data: {
+        isOpen,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (err) {
+    logger.error('Market status check failed', { error: err.message });
+    res.json({
+      success: true,
+      data: { isOpen: null },
+      error: { code: 'FMP_ERROR', message: err.message }
+    });
   }
 });
 

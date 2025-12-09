@@ -51,6 +51,7 @@
 
 	const navLinks = [
 		{ href: '/markets', label: 'Markets' },
+		{ href: '/compare', label: 'Compare' },
 		{ href: '/screener', label: 'Screener' },
 		{ href: '/watchlist', label: 'Watchlist' },
 		{ href: '/portfolio', label: 'Portfolio' },

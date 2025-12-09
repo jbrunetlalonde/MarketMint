@@ -225,8 +225,7 @@ export const financialsApi = {
 				epsEstimate: number | null;
 				revenue: number | null;
 				revenueEstimate: number | null;
-			}>,
-			{ from: string; to: string; count: number }
+			}>
 		>(`/api/financials/earnings/calendar?${searchParams.toString()}`);
 	},
 
@@ -297,21 +296,115 @@ export const financialsApi = {
 
 	getKeyMetrics: (ticker: string, token?: string) =>
 		request<{
+			// Valuation
 			peRatio?: number | null;
 			pbRatio?: number | null;
-			debtToEquity?: number | null;
-			currentRatio?: number | null;
-			roe?: number | null;
-			roa?: number | null;
-			dividendYield?: number | null;
+			evToEbitda?: number | null;
+			pegRatio?: number | null;
+			// Profitability
 			grossProfitMargin?: number | null;
 			operatingProfitMargin?: number | null;
 			netProfitMargin?: number | null;
+			roe?: number | null;
+			roa?: number | null;
+			// Growth
+			revenueGrowth?: number | null;
+			epsGrowth?: number | null;
+			// Financial Health
+			debtToEquity?: number | null;
+			currentRatio?: number | null;
+			freeCashFlow?: number | null;
+			// Dividends
+			dividendYield?: number | null;
 		}>(`/api/financials/${ticker}/key-metrics`, { token }),
 
 	getRevenueSegmentsV2: (ticker: string, token?: string) =>
 		request<{
 			productSegments: Array<{ segment: string; revenue: number; year: number }>;
 			geographicSegments: Array<{ segment: string; revenue: number; year: number }>;
-		}>(`/api/financials/${ticker}/revenue-segments`, { token })
+		}>(`/api/financials/${ticker}/revenue-segments`, { token }),
+
+	getAnalystEstimates: (ticker: string, period = 'quarter', limit = 8, token?: string) =>
+		request<
+			Array<{
+				date: string;
+				symbol: string;
+				estimatedRevenueLow: number;
+				estimatedRevenueHigh: number;
+				estimatedRevenueAvg: number;
+				estimatedEpsLow: number;
+				estimatedEpsHigh: number;
+				estimatedEpsAvg: number;
+				estimatedNetIncomeLow: number;
+				estimatedNetIncomeHigh: number;
+				estimatedNetIncomeAvg: number;
+				numberAnalystEstimatedRevenue: number;
+				numberAnalystsEstimatedEps: number;
+			}>
+		>(`/api/financials/${ticker}/estimates?period=${period}&limit=${limit}`, { token }),
+
+	getHolders: (ticker: string, limit = 20, token?: string) =>
+		request<{
+			institutional: Array<{
+				holder: string;
+				shares: number;
+				dateReported: string;
+				change: number;
+				changePercentage: number;
+			}>;
+			mutualFunds: Array<{
+				holder: string;
+				shares: number;
+				dateReported: string;
+				change: number;
+				changePercentage: number;
+				marketValue: number;
+			}>;
+		}>(`/api/financials/${ticker}/holders?limit=${limit}`, { token }),
+
+	getETFHoldings: (ticker: string, limit = 50, token?: string) =>
+		request<
+			Array<{
+				asset: string;
+				sharesNumber: number;
+				weightPercentage: number;
+				marketValue: number;
+			}>
+		>(`/api/financials/${ticker}/etf-holdings?limit=${limit}`, { token }),
+
+	getPressReleases: (ticker: string, limit = 20, token?: string) =>
+		request<
+			Array<{
+				symbol: string;
+				date: string;
+				title: string;
+				text: string;
+			}>
+		>(`/api/financials/${ticker}/press-releases?limit=${limit}`, { token }),
+
+	getDetailedGrades: (ticker: string, limit = 100, token?: string) =>
+		request<
+			Array<{
+				symbol: string;
+				date: string;
+				gradingCompany: string;
+				previousGrade: string;
+				newGrade: string;
+				action: string;
+			}>
+		>(`/api/financials/${ticker}/detailed-grades?limit=${limit}`, { token }),
+
+	getPriceTargetSummary: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			lastMonthCount: number;
+			lastMonthAvgPriceTarget: number;
+			lastQuarterCount: number;
+			lastQuarterAvgPriceTarget: number;
+			lastYearCount: number;
+			lastYearAvgPriceTarget: number;
+			allTimeCount: number;
+			allTimeAvgPriceTarget: number;
+			publishers: string[];
+		} | null>(`/api/financials/${ticker}/price-target-summary`, { token })
 };

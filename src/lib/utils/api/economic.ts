@@ -2,16 +2,18 @@ import { request } from './request';
 
 export const economicApi = {
 	getEconomicIndicators: (token?: string) =>
-		request<Record<string, {
-			seriesId: string;
-			name: string;
-			unit: string;
-			frequency: string;
-			latest: { date: string; value: number } | null;
-			change: number | null;
-			changePercent: number | null;
-			history: Array<{ date: string; value: number }>;
-		}>>('/api/economic/indicators', { token }),
+		request<{
+			treasury: {
+				date: string;
+				month3: number | null;
+				year2: number | null;
+				year10: number | null;
+				year30: number | null;
+			} | null;
+			gdp: { date: string; value: number } | null;
+			cpi: { date: string; value: number } | null;
+			unemployment: { date: string; value: number } | null;
+		}>('/api/economic/indicators', { token }),
 
 	getEconomicDashboard: (token?: string) =>
 		request<{
@@ -27,25 +29,97 @@ export const economicApi = {
 			gdp: { latest: { date: string; value: number } | null } | null;
 		}>('/api/economic/dashboard', { token }),
 
-	getEconomicSeries: (seriesId: string, limit?: number, token?: string) =>
+	getTreasuryRates: (token?: string) =>
 		request<{
-			seriesId: string;
-			name: string;
-			unit: string;
-			frequency: string;
-			latest: { date: string; value: number } | null;
-			change: number | null;
-			changePercent: number | null;
-			history: Array<{ date: string; value: number }>;
-		}>(`/api/economic/series/${seriesId}${limit ? `?limit=${limit}` : ''}`, { token }),
+			date: string;
+			month1: number | null;
+			month3: number | null;
+			year2: number | null;
+			year5: number | null;
+			year10: number | null;
+			year30: number | null;
+		}>('/api/economic/treasury', { token }),
 
-	getAvailableEconomicSeries: (token?: string) =>
-		request<
+	getEconomicCalendar: (from?: string, to?: string, token?: string) => {
+		const params = new URLSearchParams();
+		if (from) params.set('from', from);
+		if (to) params.set('to', to);
+		return request<
 			Array<{
-				seriesId: string;
-				name: string;
-				unit: string;
-				frequency: string;
+				date: string;
+				event: string;
+				country: string;
+				actual: number | null;
+				previous: number | null;
+				estimate: number | null;
+				impact: string;
 			}>
-		>('/api/economic/available', { token })
+		>(`/api/economic/calendar?${params.toString()}`, { token });
+	},
+
+	getIPOCalendar: (from?: string, to?: string, token?: string) => {
+		const params = new URLSearchParams();
+		if (from) params.set('from', from);
+		if (to) params.set('to', to);
+		return request<
+			Array<{
+				symbol: string;
+				company: string;
+				exchange: string;
+				date: string;
+				priceRange: string;
+				shares: number;
+				expectedPrice: number;
+				marketCap: number;
+			}>
+		>(`/api/economic/ipo-calendar?${params.toString()}`, { token });
+	},
+
+	getDividendCalendar: (from?: string, to?: string, token?: string) => {
+		const params = new URLSearchParams();
+		if (from) params.set('from', from);
+		if (to) params.set('to', to);
+		return request<
+			Array<{
+				symbol: string;
+				date: string;
+				dividend: number;
+				adjDividend: number;
+				recordDate: string;
+				paymentDate: string;
+				declarationDate: string;
+			}>
+		>(`/api/economic/dividend-calendar?${params.toString()}`, { token });
+	},
+
+	getSplitCalendar: (from?: string, to?: string, token?: string) => {
+		const params = new URLSearchParams();
+		if (from) params.set('from', from);
+		if (to) params.set('to', to);
+		return request<
+			Array<{
+				symbol: string;
+				date: string;
+				label: string;
+				numerator: number;
+				denominator: number;
+			}>
+		>(`/api/economic/split-calendar?${params.toString()}`, { token });
+	},
+
+	getEarningsCalendar: (from?: string, to?: string, token?: string) => {
+		const params = new URLSearchParams();
+		if (from) params.set('from', from);
+		if (to) params.set('to', to);
+		return request<
+			Array<{
+				symbol: string;
+				date: string;
+				time: string;
+				epsEstimate: number | null;
+				revenue: number | null;
+				revenueEstimate: number | null;
+			}>
+		>(`/api/economic/earnings-calendar?${params.toString()}`, { token });
+	}
 };

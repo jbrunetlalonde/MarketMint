@@ -696,27 +696,39 @@ router.get('/:ticker/key-metrics', async (req, res, next) => {
     }
 
     try {
-      const [metrics, ratios] = await Promise.all([
+      const [metrics, ratios, growth] = await Promise.all([
         fmp.getKeyMetrics(validation.ticker, 1),
-        fmp.getFinancialRatios(validation.ticker, 1)
+        fmp.getFinancialRatios(validation.ticker, 1),
+        fmp.getFinancialGrowth(validation.ticker, 1).catch(() => [])
       ]);
 
       const m = metrics[0] || {};
       const r = ratios[0] || {};
+      const g = growth[0] || {};
 
       res.json({
         success: true,
         data: {
-          peRatio: m.peRatioTTM || m.peRatio,
-          pbRatio: m.pbRatioTTM || m.pbRatio,
-          debtToEquity: m.debtToEquityTTM || m.debtToEquity,
-          currentRatio: m.currentRatioTTM || m.currentRatio || r.currentRatio,
-          roe: m.roeTTM || m.roe || r.returnOnEquity,
-          roa: m.roaTTM || m.roa || r.returnOnAssets,
-          dividendYield: m.dividendYieldTTM || m.dividendYield,
+          // Valuation (from ratios)
+          peRatio: r.peRatio,
+          pbRatio: r.pbRatio,
+          evToEbitda: m.evToEBITDA,
+          pegRatio: r.pegRatio,
+          // Profitability (from ratios)
           grossProfitMargin: r.grossProfitMargin,
           operatingProfitMargin: r.operatingProfitMargin,
-          netProfitMargin: r.netProfitMargin
+          netProfitMargin: r.netProfitMargin,
+          roe: r.returnOnEquity || m.returnOnEquity,
+          roa: r.returnOnAssets || m.returnOnAssets,
+          // Growth (from growth)
+          revenueGrowth: g.revenueGrowth,
+          epsGrowth: g.epsGrowth,
+          // Financial Health
+          debtToEquity: r.debtToEquityRatio || m.debtToEquity,
+          currentRatio: r.currentRatio || m.currentRatio,
+          freeCashFlow: r.freeCashFlowPerShare,
+          // Dividends
+          dividendYield: r.dividendYield
         }
       });
     } catch (err) {
@@ -843,6 +855,190 @@ router.get('/:ticker/full', async (req, res, next) => {
         ceoPortrait: ceoPortrait
       }
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/estimates
+ * Get analyst estimates (EPS and revenue forecasts)
+ */
+router.get('/:ticker/estimates', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+    const { period = 'quarter', limit = 8 } = req.query;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const estimates = await fmp.getAnalystEstimates(validation.ticker, period, parseInt(limit));
+      res.json({
+        success: true,
+        data: estimates
+      });
+    } catch (err) {
+      logger.warn('Analyst estimates fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/detailed-grades
+ * Get detailed analyst grades with individual recommendations
+ */
+router.get('/:ticker/detailed-grades', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+    const { limit = 100 } = req.query;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const grades = await fmp.getDetailedGrades(validation.ticker, parseInt(limit));
+      res.json({
+        success: true,
+        data: grades
+      });
+    } catch (err) {
+      logger.warn('Detailed grades fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/price-target-summary
+ * Get aggregated price target statistics
+ */
+router.get('/:ticker/price-target-summary', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const summary = await fmp.getPriceTargetSummary(validation.ticker);
+      res.json({
+        success: true,
+        data: summary
+      });
+    } catch (err) {
+      logger.warn('Price target summary fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/holders
+ * Get institutional and mutual fund holders
+ */
+router.get('/:ticker/holders', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+    const { limit = 20 } = req.query;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const [institutional, mutualFunds] = await Promise.all([
+        fmp.getInstitutionalHolders(validation.ticker).catch(() => []),
+        fmp.getMutualFundHolders(validation.ticker, parseInt(limit)).catch(() => [])
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          institutional: institutional.slice(0, parseInt(limit)),
+          mutualFunds
+        }
+      });
+    } catch (err) {
+      logger.warn('Holders fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({
+        success: true,
+        data: { institutional: [], mutualFunds: [] },
+        error: { code: 'FMP_ERROR', message: err.message }
+      });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/etf-holdings
+ * Get ETF holdings (for ETF tickers only)
+ */
+router.get('/:ticker/etf-holdings', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+    const { limit = 50 } = req.query;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const holdings = await fmp.getETFHoldings(validation.ticker, parseInt(limit));
+      res.json({
+        success: true,
+        data: holdings
+      });
+    } catch (err) {
+      logger.warn('ETF holdings fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/press-releases
+ * Get company press releases
+ */
+router.get('/:ticker/press-releases', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+    const { limit = 20 } = req.query;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const releases = await fmp.getPressReleases(validation.ticker, parseInt(limit));
+      res.json({
+        success: true,
+        data: releases
+      });
+    } catch (err) {
+      logger.warn('Press releases fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: [], error: { code: 'FMP_ERROR', message: err.message } });
+    }
   } catch (err) {
     next(err);
   }

@@ -15,8 +15,14 @@
 
 	// ECharts components
 	import PriceChart from '$lib/components/PriceChart.svelte';
-	import FinancialBarChart from '$lib/components/FinancialBarChart.svelte';
+	import RevenueChart from '$lib/components/RevenueChart.svelte';
+	import BalanceSheetChart from '$lib/components/BalanceSheetChart.svelte';
+	import CashFlowChart from '$lib/components/CashFlowChart.svelte';
 	import RatingRadarChart from '$lib/components/RatingRadarChart.svelte';
+	import SentimentGauge from '$lib/components/SentimentGauge.svelte';
+	import SWOTAnalysis from '$lib/components/SWOTAnalysis.svelte';
+	import TechnicalIndicators from '$lib/components/TechnicalIndicators.svelte';
+	import AnalystEstimates from '$lib/components/AnalystEstimates.svelte';
 
 	const symbol = $derived(page.params.symbol?.toUpperCase() || '');
 
@@ -210,6 +216,12 @@
 		state: string | null;
 	}>>([]);
 
+	// Insider trades for sentiment calculation
+	let insiderTrades = $state<Array<{
+		transactionType: string;
+		securitiesTransacted?: number;
+	}>>([]);
+
 	// OHLC price data for chart
 	interface OHLCData {
 		time: string;
@@ -342,14 +354,16 @@
 				splitsRes,
 				newsRes,
 				gradesRes,
-				segmentsRes
+				segmentsRes,
+				insiderRes
 			] = await Promise.all([
 				api.getPoliticalTradesByTicker(symbol, 10),
 				api.getInstitutionalHolders(symbol),
 				api.getSplits(symbol),
 				api.getStockNews(symbol, 10),
 				api.getAnalystGrades(symbol, 20),
-				api.getRevenueSegmentsV2(symbol)
+				api.getRevenueSegmentsV2(symbol),
+				api.getInsiderTradesByTicker(symbol, 20)
 			]);
 
 			if (congressRes.success && congressRes.data) {
@@ -369,6 +383,9 @@
 			}
 			if (segmentsRes.success && segmentsRes.data) {
 				revenueSegments = segmentsRes.data;
+			}
+			if (insiderRes.success && insiderRes.data) {
+				insiderTrades = insiderRes.data;
 			}
 		} catch (err) {
 			error = 'Failed to load stock data';
@@ -742,6 +759,7 @@
 				{:else}
 					<div class="chart-empty">No historical data available</div>
 				{/if}
+				<TechnicalIndicators {symbol} />
 			</section>
 
 			<!-- Income Statement -->
@@ -807,15 +825,10 @@
 					{#if incomeChartData.length > 0}
 						<div class="financial-chart">
 							<div class="chart-header">
-								<span class="chart-title">Revenue Trend</span>
+								<span class="chart-title">Revenue & Profitability</span>
 							</div>
 							<div class="chart-wrapper">
-								<FinancialBarChart
-									data={incomeChartData.map(d => ({ label: d.label, value: d.revenue }))}
-									height={180}
-									color="#059669"
-									formatValue={(v) => `$${v.toFixed(1)}B`}
-								/>
+								<RevenueChart data={incomeChartData} height={200} />
 							</div>
 						</div>
 					{/if}
@@ -871,15 +884,10 @@
 					{#if balanceChartData.length > 0}
 						<div class="financial-chart">
 							<div class="chart-header">
-								<span class="chart-title">Total Assets</span>
+								<span class="chart-title">Balance Sheet Overview</span>
 							</div>
 							<div class="chart-wrapper">
-								<FinancialBarChart
-									data={balanceChartData.map(d => ({ label: d.label, value: d.assets }))}
-									height={180}
-									color="#2563eb"
-									formatValue={(v) => `$${v.toFixed(1)}B`}
-								/>
+								<BalanceSheetChart data={balanceChartData} height={200} />
 							</div>
 						</div>
 					{/if}
@@ -943,15 +951,10 @@
 					{#if cashflowChartData.length > 0}
 						<div class="financial-chart">
 							<div class="chart-header">
-								<span class="chart-title">Operating Cash Flow</span>
+								<span class="chart-title">Cash Flow Breakdown</span>
 							</div>
 							<div class="chart-wrapper">
-								<FinancialBarChart
-									data={cashflowChartData.map(d => ({ label: d.label, value: d.operating }))}
-									height={180}
-									color="#f59e0b"
-									formatValue={(v) => `$${v.toFixed(1)}B`}
-								/>
+								<CashFlowChart data={cashflowChartData} height={200} />
 							</div>
 						</div>
 					{/if}
@@ -1032,6 +1035,18 @@
 						</tr>
 					</tbody>
 				</table>
+			</section>
+
+			<!-- Sentiment Gauge -->
+			<section class="sentiment-section">
+				<h3>Market Sentiment</h3>
+				<SentimentGauge
+					ratingScore={rating?.ratingScore}
+					grades={analystGrades}
+					{priceTarget}
+					currentPrice={quoteData?.price}
+					{insiderTrades}
+				/>
 			</section>
 
 			<!-- About Section with CEO Portrait -->
@@ -1148,6 +1163,12 @@
 				</section>
 			{/if}
 
+			<!-- SWOT Analysis -->
+			<section class="swot-section">
+				<h3>SWOT Analysis</h3>
+				<SWOTAnalysis ticker={symbol} />
+			</section>
+
 			<!-- Analyst Grades -->
 			{#if analystGrades.length > 0}
 				<section class="analyst-section">
@@ -1197,6 +1218,11 @@
 					</table>
 				</section>
 			{/if}
+
+			<!-- Analyst Estimates -->
+			<section class="estimates-section">
+				<AnalystEstimates {symbol} />
+			</section>
 
 			<!-- Institutional Ownership -->
 			{#if institutionalHolders.length > 0}
@@ -1605,15 +1631,13 @@
 	}
 
 	.chart-title {
-		font-size: 0.75rem;
+		font-size: 0.8125rem;
 		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-ink-light);
+		color: var(--color-ink);
 	}
 
 	.chart-wrapper {
-		height: 180px;
+		height: 220px;
 		padding: 0.5rem;
 	}
 

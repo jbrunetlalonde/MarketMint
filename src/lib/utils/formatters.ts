@@ -31,27 +31,34 @@ export function formatNumber(value: number | null | undefined, decimals = 0): st
  */
 export function formatCompact(value: number | null | undefined): string {
 	if (value == null) return '--';
-	if (value >= 1_000_000_000_000) {
-		return `${(value / 1_000_000_000_000).toFixed(2)}T`;
+
+	const abs = Math.abs(value);
+	const sign = value < 0 ? '-' : '';
+
+	if (abs >= 1_000_000_000_000) {
+		return `${sign}${(abs / 1_000_000_000_000).toFixed(2)}T`;
 	}
-	if (value >= 1_000_000_000) {
-		return `${(value / 1_000_000_000).toFixed(2)}B`;
+	if (abs >= 1_000_000_000) {
+		return `${sign}${(abs / 1_000_000_000).toFixed(2)}B`;
 	}
-	if (value >= 1_000_000) {
-		return `${(value / 1_000_000).toFixed(2)}M`;
+	if (abs >= 1_000_000) {
+		return `${sign}${(abs / 1_000_000).toFixed(2)}M`;
 	}
-	if (value >= 1_000) {
-		return `${(value / 1_000).toFixed(2)}K`;
+	if (abs >= 1_000) {
+		return `${sign}${(abs / 1_000).toFixed(2)}K`;
 	}
 	return value.toFixed(2);
 }
 
 /**
  * Format a percentage
+ * @param value - The percentage value (already multiplied by 100)
+ * @param decimals - Number of decimal places
+ * @param showSign - Whether to show + sign for positive values (default: true for changes, false for static values)
  */
-export function formatPercent(value: number | null | undefined, decimals = 2): string {
+export function formatPercent(value: number | null | undefined, decimals = 2, showSign = true): string {
 	if (value == null) return '--';
-	const sign = value >= 0 ? '+' : '';
+	const sign = showSign && value > 0 ? '+' : '';
 	return `${sign}${value.toFixed(decimals)}%`;
 }
 

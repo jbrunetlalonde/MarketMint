@@ -48,5 +48,11 @@ export const quotesApi = {
 		request<Array<{ sector: string; changePercent: number }>>(
 			'/api/quotes/sector-performance',
 			{ token }
-		)
+		),
+
+	getMarketStatus: (token?: string) =>
+		request<{
+			isOpen: boolean | null;
+			timestamp: string;
+		}>('/api/quotes/market-status', { token })
 };

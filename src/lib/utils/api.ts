@@ -14,6 +14,7 @@ import { portfolioApi } from './api/portfolio';
 import { newsletterApi } from './api/newsletter';
 import { searchApi } from './api/search';
 import { screenerApi } from './api/screener';
+import { analysisApi } from './api/analysis';
 
 // Re-export types
 export type { ApiOptions, ApiResponse } from './api/request';
@@ -33,6 +34,7 @@ export const api = {
 	getHistory: quotesApi.getHistory,
 	getMovers: quotesApi.getMovers,
 	getSectorPerformance: quotesApi.getSectorPerformance,
+	getMarketStatus: quotesApi.getMarketStatus,
 
 	// Watchlist
 	getWatchlist: watchlistApi.getWatchlist,
@@ -64,6 +66,10 @@ export const api = {
 	getStockNews: financialsApi.getStockNews,
 	getKeyMetrics: financialsApi.getKeyMetrics,
 	getRevenueSegmentsV2: financialsApi.getRevenueSegmentsV2,
+	getAnalystEstimates: financialsApi.getAnalystEstimates,
+	getHolders: financialsApi.getHolders,
+	getETFHoldings: financialsApi.getETFHoldings,
+	getPressReleases: financialsApi.getPressReleases,
 
 	// News
 	getNews: newsApi.getNews,
@@ -88,8 +94,11 @@ export const api = {
 	// Economic
 	getEconomicIndicators: economicApi.getEconomicIndicators,
 	getEconomicDashboard: economicApi.getEconomicDashboard,
-	getEconomicSeries: economicApi.getEconomicSeries,
-	getAvailableEconomicSeries: economicApi.getAvailableEconomicSeries,
+	getTreasuryRates: economicApi.getTreasuryRates,
+	getEconomicCalendar: economicApi.getEconomicCalendar,
+	getIPOCalendar: economicApi.getIPOCalendar,
+	getDividendCalendar: economicApi.getDividendCalendar,
+	getSplitCalendar: economicApi.getSplitCalendar,
 
 	// Charts
 	getOHLC: chartsApi.getOHLC,
@@ -133,7 +142,13 @@ export const api = {
 	// Screener
 	screenStocks: screenerApi.screenStocks,
 	getScreenerSectors: screenerApi.getSectors,
-	getScreenerExchanges: screenerApi.getExchanges
+	getScreenerExchanges: screenerApi.getExchanges,
+
+	// Analysis (AI)
+	getSWOT: analysisApi.getSWOT,
+	refreshSWOT: analysisApi.refreshSWOT,
+	explainMetric: analysisApi.explainMetric,
+	getAnalysisStatus: analysisApi.getStatus
 };
 
 export default api;

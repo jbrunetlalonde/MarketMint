@@ -13,6 +13,16 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let earnings = $state<EarningsEvent[]>([]);
+	let expandedGroups = $state<Set<string>>(new Set());
+	let initializedExpanded = false;
+
+	function toggleGroup(group: string) {
+		if (expandedGroups.has(group)) {
+			expandedGroups = new Set([...expandedGroups].filter((g) => g !== group));
+		} else {
+			expandedGroups = new Set([...expandedGroups, group]);
+		}
+	}
 
 	function getTimeLabel(time: string): string {
 		if (time === 'amc' || time === 'After Market Close') return 'AMC';
@@ -45,6 +55,14 @@
 			}
 		}
 		return Object.entries(groups).slice(0, 5);
+	});
+
+	// Expand first group by default when data loads
+	$effect(() => {
+		if (!initializedExpanded && groupedEarnings.length > 0) {
+			expandedGroups = new Set([groupedEarnings[0][0]]);
+			initializedExpanded = true;
+		}
 	});
 
 	async function loadEarnings() {
@@ -87,28 +105,50 @@
 	{:else}
 		<div class="earnings-groups">
 			{#each groupedEarnings as [group, events] (group)}
+				{@const isExpanded = expandedGroups.has(group)}
 				<div class="date-group">
-					<div class="date-header">{group}</div>
-					<div class="ticker-row">
-						{#each events.slice(0, 12) as event (event.symbol)}
-							<a href="/ticker/{event.symbol}" class="ticker-chip">
-								<img
-									src={getCompanyLogoUrl(event.symbol)}
-									alt=""
-									class="ticker-logo"
-									loading="lazy"
-									onerror={(e) => {
-										const img = e.currentTarget as HTMLImageElement;
-										img.style.display = 'none';
-									}}
-								/>
-								<span class="ticker-symbol">{event.symbol}</span>
-							</a>
-						{/each}
-						{#if events.length > 12}
-							<span class="more-count">+{events.length - 12}</span>
-						{/if}
-					</div>
+					<button class="date-header" onclick={() => toggleGroup(group)}>
+						<svg
+							class="chevron"
+							class:expanded={isExpanded}
+							width="12"
+							height="12"
+							viewBox="0 0 12 12"
+							fill="none"
+						>
+							<path
+								d="M4 2L8 6L4 10"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
+						</svg>
+						<span>{group}</span>
+						<span class="count">({events.length})</span>
+					</button>
+					{#if isExpanded}
+						<div class="ticker-row">
+							{#each events.slice(0, 12) as event (event.symbol)}
+								<a href="/ticker/{event.symbol}" class="ticker-chip">
+									<img
+										src={getCompanyLogoUrl(event.symbol)}
+										alt=""
+										class="ticker-logo"
+										loading="lazy"
+										onerror={(e) => {
+											const img = e.currentTarget as HTMLImageElement;
+											img.style.display = 'none';
+										}}
+									/>
+									<span class="ticker-symbol">{event.symbol}</span>
+								</a>
+							{/each}
+							{#if events.length > 12}
+								<span class="more-count">+{events.length - 12}</span>
+							{/if}
+						</div>
+					{/if}
 				</div>
 			{/each}
 		</div>
@@ -182,12 +222,38 @@
 	}
 
 	.date-header {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
 		font-family: var(--font-mono);
 		font-size: 0.625rem;
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--color-ink-muted);
+		background: none;
+		border: none;
+		padding: 0.25rem 0;
+		cursor: pointer;
+		transition: color 0.15s;
+	}
+
+	.date-header:hover {
+		color: var(--color-ink);
+	}
+
+	.chevron {
+		transition: transform 0.2s ease;
+		flex-shrink: 0;
+	}
+
+	.chevron.expanded {
+		transform: rotate(90deg);
+	}
+
+	.count {
+		font-weight: 400;
+		opacity: 0.7;
 	}
 
 	.ticker-row {

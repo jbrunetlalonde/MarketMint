@@ -452,13 +452,13 @@ export async function getKeyMetrics(ticker, limit = 5) {
         netIncomePerShare: item.netIncomePerShare,
         operatingCashFlowPerShare: item.operatingCashFlowPerShare,
         freeCashFlowPerShare: item.freeCashFlowPerShare,
-        peRatio: item.priceToEarningsRatio || item.peRatio,
-        pbRatio: item.priceToBookRatio || item.pbRatio,
-        debtToEquity: item.debtToEquityRatio || item.debtToEquity,
+        evToEBITDA: item.evToEBITDA,
+        debtToEquity: item.debtToEquityRatio,
         currentRatio: item.currentRatio,
-        roe: item.returnOnEquity || item.roe,
-        roa: item.returnOnAssets || item.roa,
-        dividendYield: item.dividendYield
+        returnOnEquity: item.returnOnEquity,
+        returnOnAssets: item.returnOnAssets,
+        earningsYield: item.earningsYield,
+        freeCashFlowYield: item.freeCashFlowYield
       }));
 
       await saveToDBCache('fmp_metrics_cache', ticker, formatted, ttl);
@@ -743,12 +743,14 @@ export async function getFinancialRatios(ticker, limit = 5) {
         returnOnAssets: item.returnOnAssets,
         returnOnEquity: item.returnOnEquity,
         debtRatio: item.debtRatio,
-        debtEquityRatio: item.debtToEquityRatio,
-        priceEarningsRatio: item.priceToEarningsRatio,
-        priceToBookRatio: item.priceToBookRatio,
+        debtToEquityRatio: item.debtToEquityRatio,
+        peRatio: item.priceToEarningsRatio,
+        pbRatio: item.priceToBookRatio,
         priceToSalesRatio: item.priceToSalesRatio,
         dividendYield: item.dividendYield,
-        payoutRatio: item.payoutRatio
+        payoutRatio: item.payoutRatio,
+        pegRatio: item.priceToEarningsGrowthRatio,
+        freeCashFlowPerShare: item.freeCashFlowPerShare
       }));
 
       await saveToDBCache('fmp_ratios_cache', ticker, formatted, ttl);
@@ -757,6 +759,38 @@ export async function getFinancialRatios(ticker, limit = 5) {
     } catch (err) {
       console.error(`FMP ratios error for ${ticker}:`, err.message);
       throw new Error(`Failed to fetch ratios for ${ticker}`);
+    }
+  });
+}
+
+export async function getFinancialGrowth(ticker, limit = 5) {
+  const cacheKey = getCacheKey('growth', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const memCached = getFromMemoryCache(cacheKey);
+  if (memCached) return memCached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/financial-growth?symbol=${ticker}&limit=${limit}`);
+
+      const formatted = data.map(item => ({
+        date: item.date,
+        revenueGrowth: item.revenueGrowth,
+        grossProfitGrowth: item.grossProfitGrowth,
+        operatingIncomeGrowth: item.operatingIncomeGrowth,
+        netIncomeGrowth: item.netIncomeGrowth,
+        epsGrowth: item.epsgrowth,
+        freeCashFlowGrowth: item.freeCashFlowGrowth,
+        assetGrowth: item.assetGrowth,
+        debtGrowth: item.debtGrowth
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error(`FMP financial growth error for ${ticker}:`, err.message);
+      throw new Error(`Failed to fetch financial growth for ${ticker}`);
     }
   });
 }
@@ -1743,6 +1777,433 @@ export async function getSectorPerformance() {
   });
 }
 
+// Market Movers - Top Gainers
+export async function getMarketGainers(limit = 10) {
+  const cacheKey = `fmp:marketGainers:${limit}`;
+  const ttl = 300; // 5 minute cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP('/market-biggest-gainers');
+
+      const formatted = (Array.isArray(data) ? data : []).slice(0, limit).map(item => ({
+        ticker: item.symbol,
+        name: item.name,
+        price: item.price,
+        change: item.change,
+        changePercent: item.changesPercentage
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error('FMP market gainers error:', err.message);
+      return [];
+    }
+  });
+}
+
+// Market Movers - Top Losers
+export async function getMarketLosers(limit = 10) {
+  const cacheKey = `fmp:marketLosers:${limit}`;
+  const ttl = 300; // 5 minute cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP('/market-biggest-losers');
+
+      const formatted = (Array.isArray(data) ? data : []).slice(0, limit).map(item => ({
+        ticker: item.symbol,
+        name: item.name,
+        price: item.price,
+        change: item.change,
+        changePercent: item.changesPercentage
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error('FMP market losers error:', err.message);
+      return [];
+    }
+  });
+}
+
+// Market Movers - Most Active
+export async function getMostActive(limit = 10) {
+  const cacheKey = `fmp:mostActive:${limit}`;
+  const ttl = 300; // 5 minute cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP('/most-actives');
+
+      const formatted = (Array.isArray(data) ? data : []).slice(0, limit).map(item => ({
+        ticker: item.symbol,
+        name: item.name,
+        price: item.price,
+        change: item.change,
+        changePercent: item.changesPercentage,
+        volume: item.volume
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error('FMP most active error:', err.message);
+      return [];
+    }
+  });
+}
+
+// All Market Movers in one call
+export async function getMarketMovers(limit = 10) {
+  const [gainers, losers, mostActive] = await Promise.all([
+    getMarketGainers(limit),
+    getMarketLosers(limit),
+    getMostActive(limit)
+  ]);
+
+  return { gainers, losers, mostActive };
+}
+
+// IPO Calendar
+export async function getIPOCalendar(from, to) {
+  const cacheKey = `fmp:ipoCalendar:${from}:${to}`;
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/ipo-calendar?from=${from}&to=${to}`);
+
+      const formatted = (Array.isArray(data) ? data : []).map(item => ({
+        symbol: item.symbol,
+        company: item.company,
+        exchange: item.exchange,
+        date: item.date,
+        priceRange: item.priceRange,
+        shares: item.shares,
+        expectedPrice: item.expectedPrice,
+        marketCap: item.marketCap
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error('FMP IPO calendar error:', err.message);
+      return [];
+    }
+  });
+}
+
+// Analyst Estimates (EPS and Revenue forecasts)
+// Note: Quarterly estimates require premium FMP subscription, so we always use annual
+export async function getAnalystEstimates(ticker, period = 'annual', limit = 4) {
+  const cacheKey = getCacheKey('estimates', ticker, 'annual'); // Always annual due to FMP tier
+  const ttl = config.cacheTTL.valuation;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      // FMP stable API requires period=annual (quarterly is premium only)
+      const endpoint = `/analyst-estimates?symbol=${ticker}&period=annual&limit=${limit}`;
+
+      const data = await fetchFMP(endpoint);
+
+      // Map FMP stable API field names to our expected format
+      const formatted = (Array.isArray(data) ? data : []).map(item => ({
+        date: item.date,
+        symbol: item.symbol,
+        estimatedRevenueLow: item.revenueLow,
+        estimatedRevenueHigh: item.revenueHigh,
+        estimatedRevenueAvg: item.revenueAvg,
+        estimatedEpsLow: item.epsLow,
+        estimatedEpsHigh: item.epsHigh,
+        estimatedEpsAvg: item.epsAvg,
+        estimatedNetIncomeLow: item.netIncomeLow,
+        estimatedNetIncomeHigh: item.netIncomeHigh,
+        estimatedNetIncomeAvg: item.netIncomeAvg,
+        numberAnalystEstimatedRevenue: item.numAnalystsRevenue,
+        numberAnalystsEstimatedEps: item.numAnalystsEps
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP analyst estimates not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+// Market Hours for exchanges
+export async function getMarketHours(exchange = 'NYSE') {
+  const cacheKey = `fmp:marketHours:${exchange}`;
+  const ttl = 86400; // 24 hour cache (market hours don't change often)
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/market-hours?exchange=${exchange}`);
+      const result = Array.isArray(data) ? data[0] : data;
+      setMemoryCache(cacheKey, result, ttl);
+      return result;
+    } catch (err) {
+      console.warn(`FMP market hours not available for ${exchange}:`, err.message);
+      return null;
+    }
+  });
+}
+
+// Check if market is open
+export async function isMarketOpen() {
+  const cacheKey = 'fmp:marketOpen';
+  const ttl = 60; // 1 minute cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached !== null) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP('/is-market-open');
+      const result = data?.isOpen || false;
+      setMemoryCache(cacheKey, result, ttl);
+      return result;
+    } catch (err) {
+      console.warn('FMP market open check failed:', err.message);
+      return null;
+    }
+  });
+}
+
+// Press Releases
+export async function getPressReleases(ticker, limit = 20) {
+  const cacheKey = getCacheKey('pressReleases', ticker);
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/press-releases/${ticker}?limit=${limit}`);
+
+      const formatted = (Array.isArray(data) ? data : []).map(item => ({
+        symbol: item.symbol,
+        date: item.date,
+        title: item.title,
+        text: item.text
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP press releases not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+// Dividend Calendar
+export async function getDividendCalendar(from, to) {
+  const cacheKey = `fmp:dividendCalendar:${from}:${to}`;
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/dividend-calendar?from=${from}&to=${to}`);
+
+      const formatted = (Array.isArray(data) ? data : []).map(item => ({
+        symbol: item.symbol,
+        date: item.date,
+        dividend: item.dividend,
+        adjDividend: item.adjDividend,
+        recordDate: item.recordDate,
+        paymentDate: item.paymentDate,
+        declarationDate: item.declarationDate
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error('FMP dividend calendar error:', err.message);
+      return [];
+    }
+  });
+}
+
+// ETF Holdings
+export async function getETFHoldings(ticker, limit = 50) {
+  const cacheKey = getCacheKey('etfHoldings', ticker);
+  const ttl = 86400; // 24 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/etf-holder/${ticker}`);
+
+      const formatted = (Array.isArray(data) ? data : []).slice(0, limit).map(item => ({
+        asset: item.asset,
+        sharesNumber: item.sharesNumber,
+        weightPercentage: item.weightPercentage,
+        marketValue: item.marketValue
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP ETF holdings not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+// Mutual Fund Holders (who owns the stock)
+export async function getMutualFundHolders(ticker, limit = 20) {
+  const cacheKey = getCacheKey('mutualFundHolders', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/mutual-fund-holder/${ticker}`);
+
+      const formatted = (Array.isArray(data) ? data : []).slice(0, limit).map(item => ({
+        holder: item.holder,
+        shares: item.shares,
+        dateReported: item.dateReported,
+        change: item.change,
+        changePercentage: item.changePercentage,
+        marketValue: item.marketValue
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP mutual fund holders not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+// Stock Split Calendar
+export async function getStockSplitCalendar(from, to) {
+  const cacheKey = `fmp:splitCalendar:${from}:${to}`;
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/stock-split-calendar?from=${from}&to=${to}`);
+
+      const formatted = (Array.isArray(data) ? data : []).map(item => ({
+        symbol: item.symbol,
+        date: item.date,
+        label: item.label,
+        numerator: item.numerator,
+        denominator: item.denominator
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error('FMP stock split calendar error:', err.message);
+      return [];
+    }
+  });
+}
+
+// Detailed Analyst Grades (individual analyst recommendations)
+export async function getDetailedGrades(ticker, limit = 100) {
+  const cacheKey = getCacheKey('detailedGrades', ticker);
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/grades?symbol=${ticker}`);
+
+      const formatted = (Array.isArray(data) ? data : []).slice(0, limit).map(item => ({
+        symbol: item.symbol,
+        date: item.date,
+        gradingCompany: item.gradingCompany,
+        previousGrade: item.previousGrade,
+        newGrade: item.newGrade,
+        action: item.action
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP detailed grades not available for ${ticker}:`, err.message);
+      return [];
+    }
+  });
+}
+
+// Price Target Summary (aggregated price target statistics)
+export async function getPriceTargetSummary(ticker) {
+  const cacheKey = getCacheKey('priceTargetSummary', ticker);
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/price-target-summary?symbol=${ticker}`);
+
+      const result = Array.isArray(data) && data.length > 0 ? data[0] : data;
+
+      const formatted = result ? {
+        symbol: result.symbol,
+        lastMonthCount: result.lastMonthCount,
+        lastMonthAvgPriceTarget: result.lastMonthAvgPriceTarget,
+        lastQuarterCount: result.lastQuarterCount,
+        lastQuarterAvgPriceTarget: result.lastQuarterAvgPriceTarget,
+        lastYearCount: result.lastYearCount,
+        lastYearAvgPriceTarget: result.lastYearAvgPriceTarget,
+        allTimeCount: result.allTimeCount,
+        allTimeAvgPriceTarget: result.allTimeAvgPriceTarget,
+        publishers: typeof result.publishers === 'string' ? JSON.parse(result.publishers) : result.publishers
+      } : null;
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP price target summary not available for ${ticker}:`, err.message);
+      return null;
+    }
+  });
+}
+
 // Batch quotes for multiple tickers
 export async function getBatchQuotes(tickers) {
   const tickerList = Array.isArray(tickers) ? tickers : tickers.split(',');
@@ -1784,6 +2245,7 @@ export default {
   getRating,
   getDCF,
   getFinancialRatios,
+  getFinancialGrowth,
   getEnterpriseValue,
   getStockNews,
   getGeneralNews,
@@ -1814,5 +2276,241 @@ export default {
   getOHLCV,
   getBatchQuotes,
   getEarningsSurprises,
-  getAnalystGrades
+  getAnalystGrades,
+  // Technical indicators
+  getTechnicalIndicators,
+  getSMA,
+  getEMA,
+  getRSI,
+  getMACD,
+  // Market movers
+  getMarketGainers,
+  getMarketLosers,
+  getMostActive,
+  getMarketMovers,
+  // Calendars
+  getIPOCalendar,
+  getDividendCalendar,
+  getStockSplitCalendar,
+  // Analyst data
+  getAnalystEstimates,
+  getDetailedGrades,
+  getPriceTargetSummary,
+  // Market info
+  getMarketHours,
+  isMarketOpen,
+  // Holdings
+  getETFHoldings,
+  getMutualFundHolders,
+  // Press releases
+  getPressReleases
 };
+
+// Technical indicator calculations
+function calculateSMA(prices, period) {
+  const result = [];
+  for (let i = period - 1; i < prices.length; i++) {
+    const sum = prices.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+    result.push(sum / period);
+  }
+  return result;
+}
+
+function calculateEMA(prices, period) {
+  const result = [];
+  const multiplier = 2 / (period + 1);
+
+  // First EMA is SMA
+  let ema = prices.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  result.push(ema);
+
+  for (let i = period; i < prices.length; i++) {
+    ema = (prices[i] - ema) * multiplier + ema;
+    result.push(ema);
+  }
+  return result;
+}
+
+function calculateRSI(prices, period = 14) {
+  const result = [];
+  const gains = [];
+  const losses = [];
+
+  for (let i = 1; i < prices.length; i++) {
+    const change = prices[i] - prices[i - 1];
+    gains.push(change > 0 ? change : 0);
+    losses.push(change < 0 ? Math.abs(change) : 0);
+  }
+
+  let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
+
+  for (let i = period; i < gains.length; i++) {
+    avgGain = (avgGain * (period - 1) + gains[i]) / period;
+    avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
+    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    const rsi = 100 - (100 / (1 + rs));
+    result.push(rsi);
+  }
+  return result;
+}
+
+function calculateMACD(prices, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
+  const fastEMA = calculateEMA(prices, fastPeriod);
+  const slowEMA = calculateEMA(prices, slowPeriod);
+
+  // Align arrays (slow EMA starts later)
+  const offset = slowPeriod - fastPeriod;
+  const macdLine = [];
+
+  for (let i = 0; i < slowEMA.length; i++) {
+    macdLine.push(fastEMA[i + offset] - slowEMA[i]);
+  }
+
+  const signalLine = calculateEMA(macdLine, signalPeriod);
+  const histogram = [];
+
+  const signalOffset = signalPeriod - 1;
+  for (let i = 0; i < signalLine.length; i++) {
+    histogram.push(macdLine[i + signalOffset] - signalLine[i]);
+  }
+
+  return { macdLine, signalLine, histogram };
+}
+
+export async function getTechnicalIndicators(ticker, days = 100) {
+  try {
+    const history = await getHistoricalPrices(ticker, { timeseries: days });
+    if (!history || history.length < 50) {
+      throw new Error('Insufficient price data');
+    }
+
+    // Reverse to chronological order (oldest first)
+    const prices = [...history].reverse().map(d => d.close);
+    const dates = [...history].reverse().map(d => d.date);
+
+    const sma20 = calculateSMA(prices, 20);
+    const sma50 = calculateSMA(prices, 50);
+    const ema12 = calculateEMA(prices, 12);
+    const ema26 = calculateEMA(prices, 26);
+    const rsi = calculateRSI(prices, 14);
+    const macd = calculateMACD(prices);
+
+    return {
+      dates: dates.slice(-50),
+      sma20: sma20.slice(-50),
+      sma50: sma50.slice(-50),
+      ema12: ema12.slice(-50),
+      ema26: ema26.slice(-50),
+      rsi: rsi.slice(-50),
+      macd: {
+        line: macd.macdLine.slice(-50),
+        signal: macd.signalLine.slice(-50),
+        histogram: macd.histogram.slice(-50)
+      },
+      latest: {
+        sma20: sma20[sma20.length - 1],
+        sma50: sma50[sma50.length - 1],
+        ema12: ema12[ema12.length - 1],
+        ema26: ema26[ema26.length - 1],
+        rsi: rsi[rsi.length - 1],
+        macd: macd.macdLine[macd.macdLine.length - 1],
+        signal: macd.signalLine[macd.signalLine.length - 1],
+        histogram: macd.histogram[macd.histogram.length - 1]
+      }
+    };
+  } catch (err) {
+    console.error(`Technical indicators error for ${ticker}:`, err.message);
+    throw new Error(`Failed to calculate technical indicators for ${ticker}`);
+  }
+}
+
+export async function getSMA(ticker, period = 20, days = 100) {
+  try {
+    const history = await getHistoricalPrices(ticker, { timeseries: days });
+    if (!history || history.length < period) {
+      throw new Error('Insufficient price data');
+    }
+
+    const prices = [...history].reverse().map(d => d.close);
+    const dates = [...history].reverse().map(d => d.date);
+    const sma = calculateSMA(prices, period);
+
+    const startIdx = period - 1;
+    return dates.slice(startIdx).map((date, i) => ({
+      date,
+      value: sma[i]
+    }));
+  } catch (err) {
+    console.error(`SMA error for ${ticker}:`, err.message);
+    throw new Error(`Failed to calculate SMA for ${ticker}`);
+  }
+}
+
+export async function getEMA(ticker, period = 20, days = 100) {
+  try {
+    const history = await getHistoricalPrices(ticker, { timeseries: days });
+    if (!history || history.length < period) {
+      throw new Error('Insufficient price data');
+    }
+
+    const prices = [...history].reverse().map(d => d.close);
+    const dates = [...history].reverse().map(d => d.date);
+    const ema = calculateEMA(prices, period);
+
+    const startIdx = period - 1;
+    return dates.slice(startIdx).map((date, i) => ({
+      date,
+      value: ema[i]
+    }));
+  } catch (err) {
+    console.error(`EMA error for ${ticker}:`, err.message);
+    throw new Error(`Failed to calculate EMA for ${ticker}`);
+  }
+}
+
+export async function getRSI(ticker, period = 14, days = 100) {
+  try {
+    const history = await getHistoricalPrices(ticker, { timeseries: days });
+    if (!history || history.length < period + 1) {
+      throw new Error('Insufficient price data');
+    }
+
+    const prices = [...history].reverse().map(d => d.close);
+    const dates = [...history].reverse().map(d => d.date);
+    const rsi = calculateRSI(prices, period);
+
+    const startIdx = period + period;
+    return dates.slice(startIdx).map((date, i) => ({
+      date,
+      value: rsi[i]
+    }));
+  } catch (err) {
+    console.error(`RSI error for ${ticker}:`, err.message);
+    throw new Error(`Failed to calculate RSI for ${ticker}`);
+  }
+}
+
+export async function getMACD(ticker, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9, days = 100) {
+  try {
+    const history = await getHistoricalPrices(ticker, { timeseries: days });
+    if (!history || history.length < slowPeriod + signalPeriod) {
+      throw new Error('Insufficient price data');
+    }
+
+    const prices = [...history].reverse().map(d => d.close);
+    const dates = [...history].reverse().map(d => d.date);
+    const macd = calculateMACD(prices, fastPeriod, slowPeriod, signalPeriod);
+
+    const startIdx = slowPeriod + signalPeriod - 2;
+    return dates.slice(startIdx).map((date, i) => ({
+      date,
+      macd: macd.macdLine[i + signalPeriod - 1],
+      signal: macd.signalLine[i],
+      histogram: macd.histogram[i]
+    }));
+  } catch (err) {
+    console.error(`MACD error for ${ticker}:`, err.message);
+    throw new Error(`Failed to calculate MACD for ${ticker}`);
+  }
+}

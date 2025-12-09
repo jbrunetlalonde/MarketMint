@@ -1,0 +1,251 @@
+import OpenAI from 'openai';
+import { config } from '../config/env.js';
+import { query } from '../config/database.js';
+import fmp from './financialModelPrep.js';
+
+const openai = new OpenAI({
+  apiKey: config.openaiApiKey
+});
+
+// Cache TTL for AI analysis (24 hours)
+const ANALYSIS_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+/**
+ * Check if analysis is cached and not expired
+ */
+async function getCachedAnalysis(ticker, analysisType) {
+  try {
+    const result = await query(
+      `SELECT data, created_at FROM ai_analysis_cache
+       WHERE ticker = $1 AND analysis_type = $2 AND expires_at > NOW()`,
+      [ticker.toUpperCase(), analysisType]
+    );
+    if (result.rows.length > 0) {
+      return {
+        ...result.rows[0].data,
+        cached: true,
+        generatedAt: result.rows[0].created_at
+      };
+    }
+    return null;
+  } catch (err) {
+    console.error('Error checking analysis cache:', err);
+    return null;
+  }
+}
+
+/**
+ * Save analysis to cache
+ */
+async function cacheAnalysis(ticker, analysisType, data) {
+  try {
+    const expiresAt = new Date(Date.now() + ANALYSIS_CACHE_TTL);
+    await query(
+      `INSERT INTO ai_analysis_cache (ticker, analysis_type, data, expires_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (ticker, analysis_type)
+       DO UPDATE SET data = $3, created_at = NOW(), expires_at = $4`,
+      [ticker.toUpperCase(), analysisType, JSON.stringify(data), expiresAt]
+    );
+  } catch (err) {
+    console.error('Error caching analysis:', err);
+  }
+}
+
+/**
+ * Generate SWOT analysis for a stock
+ */
+export async function generateSWOT(ticker, forceRefresh = false) {
+  if (!config.openaiApiKey) {
+    throw new Error('OpenAI API key not configured');
+  }
+
+  const upperTicker = ticker.toUpperCase();
+
+  // Check cache first
+  if (!forceRefresh) {
+    const cached = await getCachedAnalysis(upperTicker, 'swot');
+    if (cached) {
+      return cached;
+    }
+  }
+
+  // Fetch financial data
+  const [profile, keyMetrics, incomeStatement, earningsHistory] = await Promise.all([
+    fmp.getProfile(upperTicker).catch(() => null),
+    fmp.getKeyMetrics(upperTicker, 1).catch(() => []),
+    fmp.getIncomeStatement(upperTicker, 'annual', 2).catch(() => []),
+    fmp.getEarningsSurprises(upperTicker, 4).catch(() => [])
+  ]);
+
+  if (!profile) {
+    throw new Error(`Could not find profile for ${upperTicker}`);
+  }
+
+  // Build context for OpenAI
+  const metrics = keyMetrics?.[0] || {};
+  const latestIncome = incomeStatement?.[0] || {};
+  const previousIncome = incomeStatement?.[1] || {};
+
+  const revenueGrowth = previousIncome.revenue && latestIncome.revenue
+    ? ((latestIncome.revenue - previousIncome.revenue) / previousIncome.revenue * 100).toFixed(1)
+    : 'N/A';
+
+  const netMargin = latestIncome.revenue && latestIncome.netIncome
+    ? ((latestIncome.netIncome / latestIncome.revenue) * 100).toFixed(1)
+    : 'N/A';
+
+  const earningsSurprises = earningsHistory?.slice(0, 4).map(e => ({
+    date: e.date,
+    actual: e.actualEarningResult,
+    estimated: e.estimatedEarning,
+    surprise: e.actualEarningResult && e.estimatedEarning
+      ? ((e.actualEarningResult - e.estimatedEarning) / Math.abs(e.estimatedEarning) * 100).toFixed(1)
+      : null
+  })) || [];
+
+  const prompt = `Analyze ${profile.companyName || upperTicker} (${upperTicker}) and provide a concise SWOT analysis based on the following data:
+
+Company: ${profile.companyName || upperTicker}
+Sector: ${profile.sector || 'Unknown'}
+Industry: ${profile.industry || 'Unknown'}
+Description: ${profile.description?.slice(0, 500) || 'N/A'}
+
+Key Metrics:
+- Market Cap: $${(profile.mktCap / 1e9).toFixed(2)}B
+- P/E Ratio: ${metrics.peRatio?.toFixed(2) || 'N/A'}
+- Debt to Equity: ${metrics.debtToEquity?.toFixed(2) || 'N/A'}
+- ROE: ${metrics.roe ? (metrics.roe * 100).toFixed(1) + '%' : 'N/A'}
+- Current Ratio: ${metrics.currentRatio?.toFixed(2) || 'N/A'}
+
+Financial Performance:
+- Revenue Growth (YoY): ${revenueGrowth}%
+- Net Profit Margin: ${netMargin}%
+- Latest Revenue: $${(latestIncome.revenue / 1e9).toFixed(2)}B
+- Latest Net Income: $${(latestIncome.netIncome / 1e9).toFixed(2)}B
+
+Recent Earnings (last 4 quarters):
+${earningsSurprises.map(e => `- ${e.date}: ${e.surprise ? (e.surprise > 0 ? '+' : '') + e.surprise + '% surprise' : 'N/A'}`).join('\n')}
+
+Provide a SWOT analysis with:
+1. Strengths (2-3 bullet points)
+2. Weaknesses (2-3 bullet points)
+3. Opportunities (2-3 bullet points)
+4. Threats (2-3 bullet points)
+
+Keep each point brief (under 25 words). Focus on actionable insights for investors.
+
+Respond in JSON format:
+{
+  "strengths": ["point 1", "point 2", "point 3"],
+  "weaknesses": ["point 1", "point 2"],
+  "opportunities": ["point 1", "point 2"],
+  "threats": ["point 1", "point 2"]
+}`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a financial analyst providing concise SWOT analysis for stocks. Always respond in valid JSON format.'
+        },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 800,
+      response_format: { type: 'json_object' }
+    });
+
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No response from OpenAI');
+    }
+
+    const swotData = JSON.parse(content);
+
+    // Validate structure
+    if (!swotData.strengths || !swotData.weaknesses || !swotData.opportunities || !swotData.threats) {
+      throw new Error('Invalid SWOT response structure');
+    }
+
+    const result = {
+      ticker: upperTicker,
+      companyName: profile.companyName || upperTicker,
+      strengths: swotData.strengths,
+      weaknesses: swotData.weaknesses,
+      opportunities: swotData.opportunities,
+      threats: swotData.threats
+    };
+
+    // Cache the result
+    await cacheAnalysis(upperTicker, 'swot', result);
+
+    return {
+      ...result,
+      cached: false,
+      generatedAt: new Date().toISOString()
+    };
+  } catch (err) {
+    console.error('OpenAI SWOT generation error:', err);
+    throw new Error(`Failed to generate SWOT analysis: ${err.message}`);
+  }
+}
+
+/**
+ * Explain a financial metric in plain English
+ */
+export async function explainMetric(metric, value, context = {}) {
+  if (!config.openaiApiKey) {
+    throw new Error('OpenAI API key not configured');
+  }
+
+  const prompt = `Explain what a ${metric} of ${value} means for a stock in simple terms.
+${context.ticker ? `Stock: ${context.ticker}` : ''}
+${context.industry ? `Industry: ${context.industry}` : ''}
+
+Provide a brief (2-3 sentence) explanation that:
+1. Explains what the metric measures
+2. Whether this value is generally good, bad, or neutral
+3. Any important context (industry norms, etc.)
+
+Keep it simple and accessible for retail investors.`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful financial educator explaining metrics to everyday investors. Be concise and avoid jargon.'
+        },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 200
+    });
+
+    return {
+      metric,
+      value,
+      explanation: completion.choices[0]?.message?.content || 'Unable to generate explanation.'
+    };
+  } catch (err) {
+    console.error('OpenAI explain metric error:', err);
+    throw new Error(`Failed to explain metric: ${err.message}`);
+  }
+}
+
+/**
+ * Check if OpenAI is configured
+ */
+export function isConfigured() {
+  return !!config.openaiApiKey;
+}
+
+export default {
+  generateSWOT,
+  explainMetric,
+  isConfigured
+};

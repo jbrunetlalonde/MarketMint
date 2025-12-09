@@ -25,6 +25,7 @@
     "lru-cache": "^11.2.4",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.11",
+    "openai": "^6.10.0",
     "pg": "^8.13.0",
     "puppeteer": "^24.32.0",
     "replicate": "^0.32.0",

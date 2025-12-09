@@ -8,6 +8,9 @@
 	import NewsCard from '$lib/components/NewsCard.svelte';
 	import SectorPerformance from '$lib/components/SectorPerformance.svelte';
 	import EarningsCalendar from '$lib/components/EarningsCalendar.svelte';
+	import EconomicSnapshot from '$lib/components/EconomicSnapshot.svelte';
+	import MarketStatus from '$lib/components/MarketStatus.svelte';
+	import IPOCalendar from '$lib/components/IPOCalendar.svelte';
 	import api from '$lib/utils/api';
 
 	// Market indices to track
@@ -169,8 +172,11 @@
 <div class="newspaper-grid">
 	<!-- Market Indices - Top Banner -->
 	<section class="col-span-full">
-		<div class="flex justify-between items-center">
-			<h2 class="headline headline-xl">Market Overview</h2>
+		<div class="flex justify-between items-center mb-3">
+			<div class="flex items-center gap-4">
+				<h2 class="headline headline-xl">Market Overview</h2>
+				<MarketStatus />
+			</div>
 			<div class="flex items-center gap-3">
 				{#if lastUpdated}
 					<span class="text-xs text-ink-muted">
@@ -447,6 +453,10 @@
 			{/if}
 		</div>
 
+		<!-- Economic Indicators -->
+		<h3 class="headline headline-md mt-6">Economic Indicators</h3>
+		<EconomicSnapshot />
+
 		<!-- Sector Performance -->
 		<h3 class="headline headline-md mt-6">Sector Performance</h3>
 		<SectorPerformance />
@@ -454,6 +464,10 @@
 		<!-- Upcoming Earnings -->
 		<h3 class="headline headline-md mt-6">Upcoming Earnings</h3>
 		<EarningsCalendar />
+
+		<!-- Upcoming IPOs -->
+		<h3 class="headline headline-md mt-6">Upcoming IPOs</h3>
+		<IPOCalendar />
 	</aside>
 
 </div>

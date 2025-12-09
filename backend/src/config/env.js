@@ -38,6 +38,7 @@ export const config = {
   newsApiKey: process.env.NEWS_API_KEY || '',
   replicateApiToken: process.env.REPLICATE_API_TOKEN || '',
   fredApiKey: process.env.FRED_API_KEY || '',
+  openaiApiKey: process.env.OPENAI_API_KEY || '',
 
   // Monitoring
   sentryDsn: process.env.SENTRY_DSN || '',
