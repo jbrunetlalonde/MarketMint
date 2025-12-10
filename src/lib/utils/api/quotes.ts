@@ -41,6 +41,8 @@ export const quotesApi = {
 			gainers: Array<{ ticker: string; name?: string; price: number; change: number; changePercent: number; volume: number }>;
 			losers: Array<{ ticker: string; name?: string; price: number; change: number; changePercent: number; volume: number }>;
 			mostActive: Array<{ ticker: string; name?: string; price: number; change: number; changePercent: number; volume: number }>;
+			lastUpdated: string | null;
+			isCached: boolean;
 			timestamp: string;
 		}>(`/api/quotes/movers?limit=${limit}`, { token }),
 

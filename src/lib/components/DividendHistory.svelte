@@ -11,20 +11,32 @@
 		declarationDate?: string;
 	}
 
+	interface DividendInfo {
+		paysDividend: boolean;
+		annualDividend: number | null;
+		dividendYield: number | null;
+		dividendGrowthRate: number | null;
+		payoutRatio: number | null;
+		consecutiveYears: number;
+		frequency: string | null;
+	}
+
 	interface Props {
 		dividends: Dividend[];
+		dividendInfo?: DividendInfo | null;
 		currentPrice?: number;
 		loading?: boolean;
 		limit?: number;
 		ticker?: string;
 	}
 
-	let { dividends, currentPrice, loading = false, limit = 8, ticker }: Props = $props();
+	let { dividends, dividendInfo = null, currentPrice, loading = false, limit = 8, ticker }: Props = $props();
 
 	const displayDividends = $derived(dividends.slice(0, limit));
 
-	// Calculate trailing 12-month dividend yield
+	// Calculate trailing 12-month dividend yield (fallback if dividendInfo not provided)
 	const annualDividend = $derived.by(() => {
+		if (dividendInfo?.annualDividend != null) return dividendInfo.annualDividend;
 		if (!dividends || dividends.length === 0) return null;
 
 		const oneYearAgo = new Date();
@@ -37,12 +49,14 @@
 	});
 
 	const dividendYield = $derived.by(() => {
+		if (dividendInfo?.dividendYield != null) return dividendInfo.dividendYield;
 		if (!annualDividend || !currentPrice || currentPrice <= 0) return null;
 		return (annualDividend / currentPrice) * 100;
 	});
 
-	// Calculate average frequency
+	// Calculate average frequency (fallback if dividendInfo not provided)
 	const dividendFrequency = $derived.by(() => {
+		if (dividendInfo?.frequency) return dividendInfo.frequency;
 		if (!dividends || dividends.length < 2) return null;
 
 		const oneYearAgo = new Date();
@@ -55,6 +69,11 @@
 		if (recentDividends.length >= 2) return 'Semi-Annual';
 		return 'Annual';
 	});
+
+	// Additional metrics from dividendInfo
+	const dividendGrowthRate = $derived(dividendInfo?.dividendGrowthRate ?? null);
+	const payoutRatio = $derived(dividendInfo?.payoutRatio ?? null);
+	const consecutiveYears = $derived(dividendInfo?.consecutiveYears ?? 0);
 </script>
 
 <div class="dividend-history">
@@ -101,6 +120,32 @@
 					</div>
 				{/if}
 			</div>
+
+			<!-- Additional Metrics (if available) -->
+			{#if dividendGrowthRate !== null || payoutRatio !== null || consecutiveYears > 0}
+				<div class="additional-stats">
+					{#if dividendGrowthRate !== null}
+						<div class="metric">
+							<span class="metric-label">Growth Rate</span>
+							<span class="metric-value" class:positive={dividendGrowthRate > 0} class:negative={dividendGrowthRate < 0}>
+								{dividendGrowthRate > 0 ? '+' : ''}{dividendGrowthRate.toFixed(1)}%
+							</span>
+						</div>
+					{/if}
+					{#if payoutRatio !== null}
+						<div class="metric">
+							<span class="metric-label">Payout Ratio</span>
+							<span class="metric-value">{payoutRatio.toFixed(0)}%</span>
+						</div>
+					{/if}
+					{#if consecutiveYears > 0}
+						<div class="metric">
+							<span class="metric-label">Streak</span>
+							<span class="metric-value">{consecutiveYears} yr{consecutiveYears !== 1 ? 's' : ''}</span>
+						</div>
+					{/if}
+				</div>
+			{/if}
 
 			<!-- Dividend Table -->
 			<div class="dividend-table">
@@ -241,6 +286,43 @@
 
 	.stat-value.yield {
 		color: var(--color-gain);
+	}
+
+	.additional-stats {
+		display: flex;
+		gap: 1rem;
+		padding: 0.5rem 0.75rem;
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-newsprint-dark);
+	}
+
+	.metric {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+	}
+
+	.metric-label {
+		font-family: 'IBM Plex Mono', monospace;
+		font-size: 0.5625rem;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-ink-muted);
+	}
+
+	.metric-value {
+		font-family: 'IBM Plex Mono', monospace;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		color: var(--color-ink);
+	}
+
+	.metric-value.positive {
+		color: var(--color-gain);
+	}
+
+	.metric-value.negative {
+		color: var(--color-loss);
 	}
 
 	.dividend-table {

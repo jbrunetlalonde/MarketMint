@@ -23,13 +23,14 @@
 	import SWOTAnalysis from '$lib/components/SWOTAnalysis.svelte';
 	import TechnicalIndicators from '$lib/components/TechnicalIndicators.svelte';
 	import AnalystEstimates from '$lib/components/AnalystEstimates.svelte';
+	import DividendHistory from '$lib/components/DividendHistory.svelte';
 
 	const symbol = $derived(page.params.symbol?.toUpperCase() || '');
 
 	let loading = $state(true);
 	let chartLoading = $state(false);
 	let error = $state<string | null>(null);
-	let selectedPeriod = $state('1d');
+	let selectedPeriod = $state('3m');
 	let incomePeriod = $state<'annual' | 'quarter'>('quarter');
 	let balancePeriod = $state<'annual' | 'quarter'>('quarter');
 	let cashflowPeriod = $state<'annual' | 'quarter'>('quarter');
@@ -177,6 +178,25 @@
 		numerator: number;
 		denominator: number;
 	}>>([]);
+
+	// Dividends
+	let dividends = $state<Array<{
+		date: string;
+		dividend: number;
+		paymentDate?: string;
+		recordDate?: string;
+		declarationDate?: string;
+	}>>([]);
+
+	let dividendInfo = $state<{
+		paysDividend: boolean;
+		annualDividend: number | null;
+		dividendYield: number | null;
+		dividendGrowthRate: number | null;
+		payoutRatio: number | null;
+		consecutiveYears: number;
+		frequency: string | null;
+	} | null>(null);
 
 	// News articles
 	let news = $state<Array<{
@@ -355,7 +375,9 @@
 				newsRes,
 				gradesRes,
 				segmentsRes,
-				insiderRes
+				insiderRes,
+				dividendsRes,
+				dividendInfoRes
 			] = await Promise.all([
 				api.getPoliticalTradesByTicker(symbol, 10),
 				api.getInstitutionalHolders(symbol),
@@ -363,7 +385,9 @@
 				api.getStockNews(symbol, 10),
 				api.getAnalystGrades(symbol, 20),
 				api.getRevenueSegmentsV2(symbol),
-				api.getInsiderTradesByTicker(symbol, 20)
+				api.getInsiderTradesByTicker(symbol, 20),
+				api.getDividends(symbol),
+				api.getDividendInfo(symbol)
 			]);
 
 			if (congressRes.success && congressRes.data) {
@@ -386,6 +410,12 @@
 			}
 			if (insiderRes.success && insiderRes.data) {
 				insiderTrades = insiderRes.data;
+			}
+			if (dividendsRes.success && dividendsRes.data) {
+				dividends = dividendsRes.data;
+			}
+			if (dividendInfoRes.success && dividendInfoRes.data) {
+				dividendInfo = dividendInfoRes.data;
 			}
 		} catch (err) {
 			error = 'Failed to load stock data';
@@ -1133,6 +1163,16 @@
 					</table>
 				</section>
 			{/if}
+
+			<!-- Dividend History -->
+			<section class="dividend-section">
+				<DividendHistory
+					{dividends}
+					{dividendInfo}
+					currentPrice={quoteData?.price ?? undefined}
+					ticker={symbol}
+				/>
+			</section>
 
 			<!-- Ratings Snapshot -->
 			{#if rating}
@@ -1911,6 +1951,11 @@
 
 	.split-type {
 		color: var(--color-gain);
+	}
+
+	/* Dividends */
+	.dividend-section {
+		margin-top: 1.5rem;
 	}
 
 	/* Ratings */

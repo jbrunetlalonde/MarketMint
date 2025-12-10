@@ -406,5 +406,18 @@ export const financialsApi = {
 			allTimeCount: number;
 			allTimeAvgPriceTarget: number;
 			publishers: string[];
-		} | null>(`/api/financials/${ticker}/price-target-summary`, { token })
+		} | null>(`/api/financials/${ticker}/price-target-summary`, { token }),
+
+	getDividendInfo: (ticker: string, token?: string) =>
+		request<{
+			paysDividend: boolean;
+			annualDividend: number | null;
+			dividendYield: number | null;
+			dividendGrowthRate: number | null;
+			payoutRatio: number | null;
+			consecutiveYears: number;
+			frequency: string | null;
+			lastDividendDate: string | null;
+			lastDividendAmount: number | null;
+		} | null>(`/api/financials/${ticker}/dividend-info`, { token })
 };

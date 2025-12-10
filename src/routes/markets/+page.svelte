@@ -11,6 +11,8 @@
 	import EconomicSnapshot from '$lib/components/EconomicSnapshot.svelte';
 	import MarketStatus from '$lib/components/MarketStatus.svelte';
 	import IPOCalendar from '$lib/components/IPOCalendar.svelte';
+	import DividendCalendar from '$lib/components/DividendCalendar.svelte';
+	import SplitCalendar from '$lib/components/SplitCalendar.svelte';
 	import api from '$lib/utils/api';
 
 	// Market indices to track
@@ -40,6 +42,8 @@
 	let topGainers = $state<MoverStock[]>([]);
 	let topLosers = $state<MoverStock[]>([]);
 	let mostActive = $state<MoverStock[]>([]);
+	let moversLastUpdated = $state<string | null>(null);
+	let moversIsCached = $state(false);
 
 	// Derived data from quotes store
 	const indicesData = $derived(
@@ -138,6 +142,8 @@
 				topGainers = moversResponse.data.gainers || [];
 				topLosers = moversResponse.data.losers || [];
 				mostActive = moversResponse.data.mostActive || [];
+				moversLastUpdated = moversResponse.data.lastUpdated || null;
+				moversIsCached = moversResponse.data.isCached || false;
 			}
 
 			// Fetch news
@@ -232,7 +238,14 @@
 
 	<!-- Main Content - Top Movers -->
 	<section class="col-span-8">
-		<h2 class="headline headline-lg">Top Movers</h2>
+		<div class="flex items-center justify-between mb-2">
+			<h2 class="headline headline-lg mb-0">Top Movers</h2>
+			{#if moversLastUpdated}
+				<span class="text-xs text-ink-muted font-mono">
+					{moversIsCached ? 'As of ' : ''}{new Date(moversLastUpdated).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+				</span>
+			{/if}
+		</div>
 
 		<div class="grid grid-cols-2 gap-4">
 			<!-- Gainers -->
@@ -422,6 +435,26 @@
 				</table>
 			{/if}
 		</div>
+
+		<!-- Calendars Grid -->
+		<div class="calendars-grid mt-6">
+			<div class="calendar-card">
+				<h3 class="headline headline-sm">Upcoming Earnings</h3>
+				<EarningsCalendar />
+			</div>
+			<div class="calendar-card">
+				<h3 class="headline headline-sm">Upcoming IPOs</h3>
+				<IPOCalendar />
+			</div>
+			<div class="calendar-card">
+				<h3 class="headline headline-sm">Ex-Dividend Dates</h3>
+				<DividendCalendar />
+			</div>
+			<div class="calendar-card">
+				<h3 class="headline headline-sm">Stock Splits</h3>
+				<SplitCalendar />
+			</div>
+		</div>
 	</section>
 
 	<!-- Sidebar - News & Quick Links -->
@@ -461,13 +494,6 @@
 		<h3 class="headline headline-md mt-6">Sector Performance</h3>
 		<SectorPerformance />
 
-		<!-- Upcoming Earnings -->
-		<h3 class="headline headline-md mt-6">Upcoming Earnings</h3>
-		<EarningsCalendar />
-
-		<!-- Upcoming IPOs -->
-		<h3 class="headline headline-md mt-6">Upcoming IPOs</h3>
-		<IPOCalendar />
 	</aside>
 
 </div>
@@ -522,5 +548,27 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		max-width: 140px;
+	}
+
+	.calendars-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+	}
+
+	.calendar-card {
+		background: var(--color-paper);
+		border: 1px solid var(--color-border);
+		padding: 0.75rem;
+	}
+
+	.calendar-card .headline {
+		margin-bottom: 0.5rem;
+	}
+
+	@media (max-width: 768px) {
+		.calendars-grid {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>

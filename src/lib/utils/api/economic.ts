@@ -121,5 +121,48 @@ export const economicApi = {
 				revenueEstimate: number | null;
 			}>
 		>(`/api/economic/earnings-calendar?${params.toString()}`, { token });
+	},
+
+	getIPOProspectus: (from?: string, to?: string, token?: string) => {
+		const params = new URLSearchParams();
+		if (from) params.set('from', from);
+		if (to) params.set('to', to);
+		return request<
+			Array<{
+				symbol: string;
+				cik: string;
+				form: string;
+				filingDate: string;
+				acceptedDate: string;
+				effectivenessDate: string;
+				url: string;
+				publicOfferingPrice: number | null;
+				discountOrCommission: number | null;
+				proceedsBeforeExpenses: number | null;
+				sharesOffered: number | null;
+				ipoDate: string;
+				company: string;
+			}>
+		>(`/api/economic/ipo-prospectus?${params.toString()}`, { token });
+	},
+
+	getIPODisclosure: (from?: string, to?: string, token?: string) => {
+		const params = new URLSearchParams();
+		if (from) params.set('from', from);
+		if (to) params.set('to', to);
+		return request<
+			Array<{
+				symbol: string;
+				cik: string;
+				form: string;
+				filingDate: string;
+				acceptedDate: string;
+				effectivenessDate: string;
+				url: string;
+				company: string;
+				exchange: string;
+				ipoDate: string;
+			}>
+		>(`/api/economic/ipo-disclosure?${params.toString()}`, { token });
 	}
 };

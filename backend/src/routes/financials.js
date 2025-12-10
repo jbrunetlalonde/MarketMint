@@ -418,6 +418,112 @@ router.get('/:ticker/dividends', async (req, res, next) => {
 });
 
 /**
+ * GET /api/financials/:ticker/dividend-info
+ * Get dividend analytics (growth rate, consecutive years, payout ratio)
+ */
+router.get('/:ticker/dividend-info', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const [dividends, ratios] = await Promise.all([
+        fmp.getDividends(validation.ticker),
+        fmp.getFinancialRatios(validation.ticker, 1).catch(() => [])
+      ]);
+
+      if (!dividends || dividends.length === 0) {
+        return res.json({
+          success: true,
+          data: {
+            paysDividend: false,
+            annualDividend: null,
+            dividendYield: null,
+            dividendGrowthRate: null,
+            payoutRatio: null,
+            consecutiveYears: 0,
+            frequency: null
+          }
+        });
+      }
+
+      // Calculate annual dividends by year
+      const dividendsByYear = {};
+      for (const d of dividends) {
+        const year = new Date(d.date).getFullYear();
+        if (!dividendsByYear[year]) dividendsByYear[year] = 0;
+        dividendsByYear[year] += d.dividend;
+      }
+
+      const years = Object.keys(dividendsByYear).map(Number).sort((a, b) => b - a);
+      const currentYear = new Date().getFullYear();
+      const lastFullYear = years.find(y => y < currentYear) || years[0];
+
+      // Calculate TTM dividend
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      const ttmDividends = dividends.filter(d => new Date(d.date) >= oneYearAgo);
+      const annualDividend = ttmDividends.reduce((sum, d) => sum + d.dividend, 0);
+
+      // Calculate growth rate (compare last two full years)
+      let dividendGrowthRate = null;
+      if (years.length >= 2) {
+        const latestYear = dividendsByYear[years[0]];
+        const previousYear = dividendsByYear[years[1]];
+        if (previousYear > 0) {
+          dividendGrowthRate = ((latestYear - previousYear) / previousYear) * 100;
+        }
+      }
+
+      // Calculate consecutive years of dividend payments
+      let consecutiveYears = 0;
+      for (let i = 0; i < years.length; i++) {
+        if (i === 0 || years[i] === years[i - 1] - 1) {
+          consecutiveYears++;
+        } else {
+          break;
+        }
+      }
+
+      // Get payout ratio from financial ratios if available
+      const latestRatios = ratios[0] || {};
+      const payoutRatio = latestRatios.payoutRatio || latestRatios.dividendPayoutRatio || null;
+      const dividendYield = latestRatios.dividendYield || null;
+
+      // Determine frequency
+      let frequency = null;
+      if (ttmDividends.length >= 4) frequency = 'Quarterly';
+      else if (ttmDividends.length >= 2) frequency = 'Semi-Annual';
+      else if (ttmDividends.length >= 1) frequency = 'Annual';
+
+      res.json({
+        success: true,
+        data: {
+          paysDividend: true,
+          annualDividend,
+          dividendYield: dividendYield ? dividendYield * 100 : null,
+          dividendGrowthRate,
+          payoutRatio: payoutRatio ? payoutRatio * 100 : null,
+          consecutiveYears,
+          frequency,
+          lastDividendDate: dividends[0]?.date || null,
+          lastDividendAmount: dividends[0]?.dividend || null
+        }
+      });
+    } catch (err) {
+      logger.warn('Dividend info fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/financials/:ticker/splits
  * Get stock split history
  */

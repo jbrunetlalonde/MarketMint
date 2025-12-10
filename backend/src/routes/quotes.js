@@ -48,6 +48,8 @@ router.get('/movers', async (req, res, next) => {
         gainers: movers.gainers || [],
         losers: movers.losers || [],
         mostActive: movers.mostActive || [],
+        lastUpdated: movers.lastUpdated || new Date().toISOString(),
+        isCached: movers.isCached || false,
         timestamp: new Date().toISOString()
       }
     });
@@ -56,7 +58,7 @@ router.get('/movers', async (req, res, next) => {
     // Return empty data on error
     res.json({
       success: true,
-      data: { gainers: [], losers: [], mostActive: [], timestamp: new Date().toISOString() },
+      data: { gainers: [], losers: [], mostActive: [], lastUpdated: null, isCached: false, timestamp: new Date().toISOString() },
       error: { code: 'FMP_ERROR', message: err.message }
     });
   }

@@ -135,6 +135,46 @@ router.get('/ipo-calendar', async (req, res, next) => {
 });
 
 /**
+ * GET /api/economic/ipo-prospectus
+ * Get IPO prospectus details (offering prices, SEC filings)
+ */
+router.get('/ipo-prospectus', async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+
+    // Default to next 30 days
+    const fromDate = from || new Date().toISOString().split('T')[0];
+    const toDate = to || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const prospectus = await fmp.getIPOProspectus(fromDate, toDate);
+    res.json({ success: true, data: prospectus });
+  } catch (err) {
+    console.error('IPO prospectus error:', err.message);
+    res.json({ success: true, data: [], error: { message: err.message } });
+  }
+});
+
+/**
+ * GET /api/economic/ipo-disclosure
+ * Get IPO disclosure filings (SEC documents)
+ */
+router.get('/ipo-disclosure', async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+
+    // Default to next 30 days
+    const fromDate = from || new Date().toISOString().split('T')[0];
+    const toDate = to || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const disclosure = await fmp.getIPODisclosure(fromDate, toDate);
+    res.json({ success: true, data: disclosure });
+  } catch (err) {
+    console.error('IPO disclosure error:', err.message);
+    res.json({ success: true, data: [], error: { message: err.message } });
+  }
+});
+
+/**
  * GET /api/economic/dividend-calendar
  * Get upcoming dividend dates
  */

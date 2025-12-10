@@ -14,7 +14,21 @@
 		marketCap: number;
 	}
 
+	interface IPOProspectus {
+		symbol: string;
+		url: string;
+		publicOfferingPrice: number | null;
+	}
+
+	interface IPODisclosure {
+		symbol: string;
+		url: string;
+		form: string;
+	}
+
 	let ipos = $state<IPO[]>([]);
+	let prospectusMap = $state<Map<string, IPOProspectus>>(new Map());
+	let disclosureMap = $state<Map<string, IPODisclosure>>(new Map());
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -24,12 +38,41 @@
 		try {
 			const today = new Date().toISOString().split('T')[0];
 			const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-			const response = await fetch(`${API_BASE}/api/economic/ipo-calendar?from=${today}&to=${future}`);
-			const result = await response.json();
-			if (result.success && result.data) {
-				ipos = result.data.slice(0, 5);
+
+			// Fetch all three endpoints in parallel
+			const [calendarRes, prospectusRes, disclosureRes] = await Promise.all([
+				fetch(`${API_BASE}/api/economic/ipo-calendar?from=${today}&to=${future}`),
+				fetch(`${API_BASE}/api/economic/ipo-prospectus?from=${today}&to=${future}`),
+				fetch(`${API_BASE}/api/economic/ipo-disclosure?from=${today}&to=${future}`)
+			]);
+
+			const [calendarResult, prospectusResult, disclosureResult] = await Promise.all([
+				calendarRes.json(),
+				prospectusRes.json(),
+				disclosureRes.json()
+			]);
+
+			if (calendarResult.success && calendarResult.data) {
+				ipos = calendarResult.data.slice(0, 5);
 			} else {
 				error = 'Failed to load IPOs';
+			}
+
+			// Build maps for quick lookup by symbol
+			if (prospectusResult.success && prospectusResult.data) {
+				const map = new Map<string, IPOProspectus>();
+				for (const p of prospectusResult.data) {
+					if (p.symbol && p.url) map.set(p.symbol, p);
+				}
+				prospectusMap = map;
+			}
+
+			if (disclosureResult.success && disclosureResult.data) {
+				const map = new Map<string, IPODisclosure>();
+				for (const d of disclosureResult.data) {
+					if (d.symbol && d.url) map.set(d.symbol, d);
+				}
+				disclosureMap = map;
 			}
 		} catch {
 			error = 'Failed to load IPO calendar';
@@ -62,6 +105,8 @@
 	{:else}
 		<div class="ipo-list">
 			{#each ipos as ipo (ipo.symbol + ipo.date)}
+				{@const prospectus = prospectusMap.get(ipo.symbol)}
+				{@const disclosure = disclosureMap.get(ipo.symbol)}
 				<div class="ipo-item">
 					<div class="ipo-header">
 						<span class="ipo-symbol">{ipo.symbol}</span>
@@ -78,6 +123,20 @@
 							<span class="ipo-cap">{formatCompact(ipo.marketCap)} cap</span>
 						{/if}
 					</div>
+					{#if prospectus || disclosure}
+						<div class="ipo-filings">
+							{#if prospectus}
+								<a href={prospectus.url} target="_blank" rel="noopener noreferrer" class="filing-link">
+									Prospectus
+								</a>
+							{/if}
+							{#if disclosure}
+								<a href={disclosure.url} target="_blank" rel="noopener noreferrer" class="filing-link">
+									{disclosure.form || 'Filing'}
+								</a>
+							{/if}
+						</div>
+					{/if}
 				</div>
 			{/each}
 		</div>
@@ -204,5 +263,31 @@
 
 	.view-all-link:hover {
 		text-decoration: underline;
+	}
+
+	.ipo-filings {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 0.375rem;
+	}
+
+	.filing-link {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-ink-muted);
+		text-decoration: none;
+		padding: 0.125rem 0.375rem;
+		border: 1px solid var(--color-border);
+		border-radius: 2px;
+		transition: all 0.15s;
+	}
+
+	.filing-link:hover {
+		color: var(--color-ink);
+		border-color: var(--color-ink);
+		background: var(--color-newsprint);
 	}
 </style>

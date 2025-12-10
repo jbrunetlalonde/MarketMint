@@ -9,6 +9,13 @@ const memoryCache = new Map();
 // In-flight request deduplication (prevent duplicate API calls)
 const pendingRequests = new Map();
 
+// Persistent movers cache - survives even when API returns empty (after market hours)
+const persistentMoversCache = {
+  gainers: { data: [], lastUpdated: null },
+  losers: { data: [], lastUpdated: null },
+  mostActive: { data: [], lastUpdated: null }
+};
+
 function getCacheKey(type, ticker, extra = '') {
   return `fmp:${type}:${ticker}${extra ? `:${extra}` : ''}`;
 }
@@ -1787,8 +1794,7 @@ export async function getMarketGainers(limit = 10) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFMP('/market-biggest-gainers');
-
+      const data = await fetchFMP('/biggest-gainers');
       const formatted = (Array.isArray(data) ? data : []).slice(0, limit).map(item => ({
         ticker: item.symbol,
         name: item.name,
@@ -1797,10 +1803,25 @@ export async function getMarketGainers(limit = 10) {
         changePercent: item.changesPercentage
       }));
 
-      setMemoryCache(cacheKey, formatted, ttl);
-      return formatted;
+      // If we got data, update persistent cache
+      if (formatted.length > 0) {
+        persistentMoversCache.gainers = { data: formatted, lastUpdated: new Date().toISOString() };
+        setMemoryCache(cacheKey, formatted, ttl);
+        return formatted;
+      }
+
+      // No data from API - return persistent cache if available
+      if (persistentMoversCache.gainers.data.length > 0) {
+        return persistentMoversCache.gainers.data;
+      }
+
+      return [];
     } catch (err) {
       console.error('FMP market gainers error:', err.message);
+      // Return persistent cache on error
+      if (persistentMoversCache.gainers.data.length > 0) {
+        return persistentMoversCache.gainers.data;
+      }
       return [];
     }
   });
@@ -1816,8 +1837,7 @@ export async function getMarketLosers(limit = 10) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFMP('/market-biggest-losers');
-
+      const data = await fetchFMP('/biggest-losers');
       const formatted = (Array.isArray(data) ? data : []).slice(0, limit).map(item => ({
         ticker: item.symbol,
         name: item.name,
@@ -1826,10 +1846,25 @@ export async function getMarketLosers(limit = 10) {
         changePercent: item.changesPercentage
       }));
 
-      setMemoryCache(cacheKey, formatted, ttl);
-      return formatted;
+      // If we got data, update persistent cache
+      if (formatted.length > 0) {
+        persistentMoversCache.losers = { data: formatted, lastUpdated: new Date().toISOString() };
+        setMemoryCache(cacheKey, formatted, ttl);
+        return formatted;
+      }
+
+      // No data from API - return persistent cache if available
+      if (persistentMoversCache.losers.data.length > 0) {
+        return persistentMoversCache.losers.data;
+      }
+
+      return [];
     } catch (err) {
       console.error('FMP market losers error:', err.message);
+      // Return persistent cache on error
+      if (persistentMoversCache.losers.data.length > 0) {
+        return persistentMoversCache.losers.data;
+      }
       return [];
     }
   });
@@ -1846,7 +1881,6 @@ export async function getMostActive(limit = 10) {
   return deduplicatedRequest(cacheKey, async () => {
     try {
       const data = await fetchFMP('/most-actives');
-
       const formatted = (Array.isArray(data) ? data : []).slice(0, limit).map(item => ({
         ticker: item.symbol,
         name: item.name,
@@ -1856,10 +1890,25 @@ export async function getMostActive(limit = 10) {
         volume: item.volume
       }));
 
-      setMemoryCache(cacheKey, formatted, ttl);
-      return formatted;
+      // If we got data, update persistent cache
+      if (formatted.length > 0) {
+        persistentMoversCache.mostActive = { data: formatted, lastUpdated: new Date().toISOString() };
+        setMemoryCache(cacheKey, formatted, ttl);
+        return formatted;
+      }
+
+      // No data from API - return persistent cache if available
+      if (persistentMoversCache.mostActive.data.length > 0) {
+        return persistentMoversCache.mostActive.data;
+      }
+
+      return [];
     } catch (err) {
       console.error('FMP most active error:', err.message);
+      // Return persistent cache on error
+      if (persistentMoversCache.mostActive.data.length > 0) {
+        return persistentMoversCache.mostActive.data;
+      }
       return [];
     }
   });
@@ -1873,7 +1922,25 @@ export async function getMarketMovers(limit = 10) {
     getMostActive(limit)
   ]);
 
-  return { gainers, losers, mostActive };
+  // Calculate lastUpdated from the most recent persistent cache timestamp
+  const timestamps = [
+    persistentMoversCache.gainers.lastUpdated,
+    persistentMoversCache.losers.lastUpdated,
+    persistentMoversCache.mostActive.lastUpdated
+  ].filter(Boolean);
+
+  const lastUpdated = timestamps.length > 0
+    ? timestamps.sort().reverse()[0] // Most recent timestamp
+    : new Date().toISOString();
+
+  // Check if we're returning cached data (no fresh data from API)
+  const isCached = gainers.length === 0 && losers.length === 0 && mostActive.length === 0
+    ? false // No data at all
+    : (persistentMoversCache.gainers.data === gainers ||
+       persistentMoversCache.losers.data === losers ||
+       persistentMoversCache.mostActive.data === mostActive);
+
+  return { gainers, losers, mostActive, lastUpdated, isCached };
 }
 
 // IPO Calendar
@@ -1886,7 +1953,7 @@ export async function getIPOCalendar(from, to) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFMP(`/ipo-calendar?from=${from}&to=${to}`);
+      const data = await fetchFMP(`/ipos-calendar?from=${from}&to=${to}`);
 
       const formatted = (Array.isArray(data) ? data : []).map(item => ({
         symbol: item.symbol,
@@ -1903,6 +1970,77 @@ export async function getIPOCalendar(from, to) {
       return formatted;
     } catch (err) {
       console.error('FMP IPO calendar error:', err.message);
+      return [];
+    }
+  });
+}
+
+// IPO Prospectus - detailed offering information
+export async function getIPOProspectus(from, to) {
+  const cacheKey = `fmp:ipoProspectus:${from}:${to}`;
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/ipos-prospectus?from=${from}&to=${to}`);
+
+      const formatted = (Array.isArray(data) ? data : []).map(item => ({
+        symbol: item.symbol,
+        cik: item.cik,
+        form: item.form,
+        filingDate: item.filingDate,
+        acceptedDate: item.acceptedDate,
+        effectivenessDate: item.effectivenessDate,
+        url: item.url,
+        publicOfferingPrice: item.publicOfferingPrice,
+        discountOrCommission: item.discountOrCommission,
+        proceedsBeforeExpenses: item.proceedsBeforeExpenses,
+        sharesOffered: item.sharesOffered,
+        ipoDate: item.ipoDate,
+        company: item.company
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error('FMP IPO prospectus error:', err.message);
+      return [];
+    }
+  });
+}
+
+// IPO Disclosure - SEC filing information
+export async function getIPODisclosure(from, to) {
+  const cacheKey = `fmp:ipoDisclosure:${from}:${to}`;
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/ipos-disclosure?from=${from}&to=${to}`);
+
+      const formatted = (Array.isArray(data) ? data : []).map(item => ({
+        symbol: item.symbol,
+        cik: item.cik,
+        form: item.form,
+        filingDate: item.filingDate,
+        acceptedDate: item.acceptedDate,
+        effectivenessDate: item.effectivenessDate,
+        url: item.url,
+        company: item.company,
+        exchange: item.exchange,
+        ipoDate: item.ipoDate
+      }));
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.error('FMP IPO disclosure error:', err.message);
       return [];
     }
   });
@@ -1981,10 +2119,15 @@ export async function isMarketOpen() {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFMP('/is-market-open');
-      const result = data?.isOpen || false;
-      setMemoryCache(cacheKey, result, ttl);
-      return result;
+      const data = await fetchFMP('/exchange-market-hours?exchange=NYSE');
+      // Check if market is currently open based on trading hours
+      if (data && data.length > 0) {
+        const nyse = data[0];
+        const result = nyse.isMarketOpen || false;
+        setMemoryCache(cacheKey, result, ttl);
+        return result;
+      }
+      return null;
     } catch (err) {
       console.warn('FMP market open check failed:', err.message);
       return null;
@@ -2030,7 +2173,7 @@ export async function getDividendCalendar(from, to) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFMP(`/dividend-calendar?from=${from}&to=${to}`);
+      const data = await fetchFMP(`/dividends-calendar?from=${from}&to=${to}`);
 
       const formatted = (Array.isArray(data) ? data : []).map(item => ({
         symbol: item.symbol,
@@ -2119,7 +2262,7 @@ export async function getStockSplitCalendar(from, to) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFMP(`/stock-split-calendar?from=${from}&to=${to}`);
+      const data = await fetchFMP(`/splits-calendar?from=${from}&to=${to}`);
 
       const formatted = (Array.isArray(data) ? data : []).map(item => ({
         symbol: item.symbol,
@@ -2290,6 +2433,8 @@ export default {
   getMarketMovers,
   // Calendars
   getIPOCalendar,
+  getIPOProspectus,
+  getIPODisclosure,
   getDividendCalendar,
   getStockSplitCalendar,
   // Analyst data
