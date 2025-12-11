@@ -6,6 +6,7 @@ interface User {
 	username: string;
 	email: string;
 	role: string;
+	hasCompletedOnboarding: boolean;
 }
 
 interface AuthState {
@@ -139,6 +140,19 @@ function createAuthStore() {
 
 			// Refresh failed, logout
 			this.logout();
+			return false;
+		},
+
+		async completeOnboarding() {
+			if (!state.accessToken) return false;
+
+			const response = await api.completeOnboarding(state.accessToken);
+
+			if (response.success && state.user) {
+				state.user = { ...state.user, hasCompletedOnboarding: true };
+				persist();
+				return true;
+			}
 			return false;
 		}
 	};

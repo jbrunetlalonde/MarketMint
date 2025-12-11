@@ -7,8 +7,21 @@
 	import api from '$lib/utils/api';
 	import NavBar from '$lib/components/NavBar.svelte';
 	import Footer from '$lib/components/Footer.svelte';
+	import Onboarding from '$lib/components/onboarding/Onboarding.svelte';
 
 	let { children } = $props();
+
+	// Onboarding state
+	const shouldShowOnboarding = $derived(
+		auth.isAuthenticated &&
+			auth.user &&
+			auth.user.hasCompletedOnboarding === false &&
+			!auth.isLoading
+	);
+
+	async function handleOnboardingComplete() {
+		await auth.completeOnboarding();
+	}
 
 	const isLandingPage = $derived($page.url.pathname === '/');
 
@@ -112,6 +125,10 @@
 		<Footer />
 	{/if}
 </div>
+
+{#if shouldShowOnboarding}
+	<Onboarding onComplete={handleOnboardingComplete} />
+{/if}
 
 <style>
 	.landing-header {

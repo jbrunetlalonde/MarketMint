@@ -72,7 +72,7 @@ router.post('/register', registerLimiter, async (req, res, next) => {
     const result = await query(
       `INSERT INTO users (username, email, password_hash)
        VALUES ($1, $2, $3)
-       RETURNING id, username, email, role, created_at`,
+       RETURNING id, username, email, role, created_at, has_completed_onboarding`,
       [username.toLowerCase(), email.toLowerCase(), passwordHash]
     );
 
@@ -98,7 +98,8 @@ router.post('/register', registerLimiter, async (req, res, next) => {
           id: user.id,
           username: user.username,
           email: user.email,
-          role: user.role
+          role: user.role,
+          hasCompletedOnboarding: user.has_completed_onboarding
         },
         accessToken,
         refreshToken
@@ -123,7 +124,7 @@ router.post('/login', authLimiter, async (req, res, next) => {
 
     // Find user
     const result = await query(
-      'SELECT id, username, email, password_hash, role FROM users WHERE email = $1',
+      'SELECT id, username, email, password_hash, role, has_completed_onboarding FROM users WHERE email = $1',
       [email.toLowerCase()]
     );
 
@@ -160,7 +161,8 @@ router.post('/login', authLimiter, async (req, res, next) => {
           id: user.id,
           username: user.username,
           email: user.email,
-          role: user.role
+          role: user.role,
+          hasCompletedOnboarding: user.has_completed_onboarding
         },
         accessToken,
         refreshToken
@@ -188,7 +190,7 @@ router.post('/refresh', async (req, res, next) => {
 
     // Find valid refresh token
     const result = await query(
-      `SELECT rt.user_id, u.username, u.email, u.role
+      `SELECT rt.user_id, u.username, u.email, u.role, u.has_completed_onboarding
        FROM refresh_tokens rt
        JOIN users u ON rt.user_id = u.id
        WHERE rt.token_hash = $1 AND rt.expires_at > NOW()`,
@@ -259,12 +261,56 @@ router.post('/logout', authenticate, async (req, res, next) => {
  * Get current user info
  */
 router.get('/me', authenticate, async (req, res) => {
+  // Fetch fresh user data including onboarding status
+  const result = await query(
+    'SELECT id, username, email, role, has_completed_onboarding FROM users WHERE id = $1',
+    [req.user.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({
+      success: false,
+      error: { message: 'User not found' }
+    });
+  }
+
+  const user = result.rows[0];
+
   res.json({
     success: true,
     data: {
-      user: req.user
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        hasCompletedOnboarding: user.has_completed_onboarding
+      }
     }
   });
+});
+
+/**
+ * POST /api/auth/onboarding/complete
+ * Mark user's onboarding as complete
+ */
+router.post('/onboarding/complete', authenticate, async (req, res, next) => {
+  try {
+    await query(
+      `UPDATE users
+       SET has_completed_onboarding = TRUE,
+           onboarding_completed_at = NOW()
+       WHERE id = $1`,
+      [req.user.id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Onboarding completed'
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;

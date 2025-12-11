@@ -1,9 +1,17 @@
 import { request } from './request';
 
+interface UserResponse {
+	id: string;
+	username: string;
+	email: string;
+	role: string;
+	hasCompletedOnboarding: boolean;
+}
+
 export const authApi = {
 	login: (email: string, password: string) =>
 		request<{
-			user: { id: string; username: string; email: string; role: string };
+			user: UserResponse;
 			accessToken: string;
 			refreshToken: string;
 		}>('/api/auth/login', {
@@ -13,7 +21,7 @@ export const authApi = {
 
 	register: (username: string, email: string, password: string) =>
 		request<{
-			user: { id: string; username: string; email: string; role: string };
+			user: UserResponse;
 			accessToken: string;
 			refreshToken: string;
 		}>('/api/auth/register', {
@@ -35,8 +43,11 @@ export const authApi = {
 		}),
 
 	getMe: (token: string) =>
-		request<{ user: { id: string; username: string; email: string; role: string } }>(
-			'/api/auth/me',
-			{ token }
-		)
+		request<{ user: UserResponse }>('/api/auth/me', { token }),
+
+	completeOnboarding: (token: string) =>
+		request<{ message: string }>('/api/auth/onboarding/complete', {
+			method: 'POST',
+			token
+		})
 };

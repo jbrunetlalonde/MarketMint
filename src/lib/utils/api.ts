@@ -27,6 +27,7 @@ export const api = {
 	refresh: authApi.refresh,
 	logout: authApi.logout,
 	getMe: authApi.getMe,
+	completeOnboarding: authApi.completeOnboarding,
 
 	// Quotes
 	getQuote: quotesApi.getQuote,
