@@ -120,13 +120,6 @@
 				</div>
 			</div>
 		</div>
-
-		<a href="/economic" class="view-more-link">
-			View Full Economic Data
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<path d="M5 12h14M12 5l7 7-7 7"></path>
-			</svg>
-		</a>
 	{:else}
 		<p class="no-data">No economic data available</p>
 	{/if}
@@ -134,9 +127,7 @@
 
 <style>
 	.economic-snapshot {
-		background: var(--color-paper);
-		border: 1px solid var(--color-border);
-		padding: 1rem;
+		/* Container - parent handles border/padding */
 	}
 
 	.loading-state {
@@ -243,35 +234,5 @@
 
 	.spread-row.inverted .spread-value {
 		color: var(--color-loss);
-	}
-
-	.view-more-link {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.375rem;
-		margin-top: 1rem;
-		padding: 0.5rem;
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: var(--color-ink);
-		text-decoration: none;
-		background: var(--color-newsprint);
-		border: 1px solid var(--color-border);
-		transition: all 0.15s ease;
-	}
-
-	.view-more-link:hover {
-		background: var(--color-ink);
-		color: var(--color-paper);
-		border-color: var(--color-ink);
-	}
-
-	.view-more-link svg {
-		width: 0.875rem;
-		height: 0.875rem;
 	}
 </style>

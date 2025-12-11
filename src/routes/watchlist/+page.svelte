@@ -4,6 +4,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import SearchAutocomplete from '$lib/components/SearchAutocomplete.svelte';
 	import api from '$lib/utils/api';
+	import { getCompanyLogoUrl } from '$lib/utils/urls';
 
 	interface WatchlistItem {
 		id: string;
@@ -167,15 +168,15 @@
 		<h1 class="headline headline-xl">Your Watchlist</h1>
 
 		{#if !auth.isAuthenticated}
-			<div class="card mt-4">
+			<div class="watchlist-card">
 				<p class="text-center py-8">
-					<a href="/auth/login" class="underline font-semibold">Sign in</a> to view and manage your
+					<a href="/auth/login" class="auth-link">Sign in</a> to view and manage your
 					watchlist.
 				</p>
 			</div>
 		{:else}
 			<!-- Add to Watchlist -->
-			<div class="card mt-4">
+			<div class="watchlist-card">
 				<h3 class="headline headline-md">Add to Watchlist</h3>
 
 				{#if pendingAdd}
@@ -216,7 +217,7 @@
 			</div>
 
 			<!-- Watchlist Table -->
-			<div class="card mt-4">
+			<div class="watchlist-card">
 				{#if loading}
 					<div class="animate-pulse space-y-3 py-4">
 						{#each Array(3) as _, i (i)}
@@ -243,8 +244,18 @@
 								{@const quote = quotes[stock.ticker]}
 								<tr>
 									<td class="col-symbol">
-										<a href="/ticker/{stock.ticker}" class="ticker-symbol">
-											{stock.ticker}
+										<a href="/ticker/{stock.ticker}" class="stock-cell">
+											<img
+												src={getCompanyLogoUrl(stock.ticker)}
+												alt=""
+												class="stock-logo"
+												loading="lazy"
+												onerror={(e) => {
+													const img = e.currentTarget as HTMLImageElement;
+													img.style.display = 'none';
+												}}
+											/>
+											<span class="ticker-symbol">{stock.ticker}</span>
 										</a>
 									</td>
 									<td class="col-price font-semibold">
@@ -296,10 +307,32 @@
 </div>
 
 <style>
+	/* Card styling */
+	.watchlist-card {
+		background: var(--color-paper);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		padding: 1.25rem;
+		margin-top: 1rem;
+	}
+
+	.watchlist-card :global(.headline) {
+		border-bottom: none;
+		padding-bottom: 0;
+		margin-bottom: 1rem;
+	}
+
+	.auth-link {
+		color: var(--color-ink);
+		font-weight: 600;
+		text-decoration: underline;
+	}
+
 	.pending-add {
 		padding: 1rem;
 		background: var(--color-newsprint);
 		border: 1px solid var(--color-border);
+		border-radius: 6px;
 	}
 
 	.pending-stock {
@@ -313,6 +346,43 @@
 		font-size: 0.65rem;
 		padding: 0.125rem 0.375rem;
 		background: var(--color-newsprint-dark);
+		border-radius: 4px;
+	}
+
+	/* Round inputs and buttons */
+	.watchlist-card :global(.input) {
+		border-radius: 6px;
+	}
+
+	.watchlist-card :global(.btn) {
+		border-radius: 6px;
+	}
+
+	/* Stock cell with logo */
+	.stock-cell {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		text-decoration: none;
+		color: inherit;
+	}
+
+	.stock-logo {
+		width: 24px;
+		height: 24px;
+		object-fit: contain;
+		border-radius: 4px;
+		flex-shrink: 0;
+	}
+
+	.stock-cell .ticker-symbol {
+		font-family: var(--font-mono);
+		font-weight: 700;
+		color: var(--color-ink);
+	}
+
+	.stock-cell:hover .ticker-symbol {
+		text-decoration: underline;
 	}
 
 	/* Watchlist Table - Improved Layout */
@@ -422,11 +492,17 @@
 	.btn-danger {
 		color: var(--color-loss);
 		border-color: var(--color-loss);
+		border-radius: 4px;
 	}
 
 	.btn-danger:hover {
 		background: var(--color-loss);
 		color: white;
+	}
+
+	/* Small buttons */
+	.btn-small {
+		border-radius: 4px;
 	}
 
 	/* Responsive */

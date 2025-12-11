@@ -13,9 +13,10 @@
 	const isLandingPage = $derived($page.url.pathname === '/');
 
 	let unreadAlertCount = $state(0);
+	let alertFetchFailed = $state(false);
 
 	async function fetchUnreadCount() {
-		if (!auth.isAuthenticated || !auth.accessToken) {
+		if (!auth.isAuthenticated || !auth.accessToken || alertFetchFailed) {
 			unreadAlertCount = 0;
 			return;
 		}
@@ -26,6 +27,13 @@
 				api.getUnreadIdeaAlertCount(auth.accessToken)
 			]);
 
+			// Check for auth failure (401) and stop polling if so
+			if (tradeResponse.error?.status === 401 || ideaResponse.error?.status === 401) {
+				alertFetchFailed = true;
+				unreadAlertCount = 0;
+				return;
+			}
+
 			const tradeCount = tradeResponse.success ? tradeResponse.data?.count ?? 0 : 0;
 			const ideaCount = ideaResponse.success ? ideaResponse.data?.count ?? 0 : 0;
 			unreadAlertCount = tradeCount + ideaCount;
@@ -33,6 +41,13 @@
 			unreadAlertCount = 0;
 		}
 	}
+
+	// Reset alert fetch state when auth changes
+	$effect(() => {
+		if (auth.isAuthenticated) {
+			alertFetchFailed = false;
+		}
+	});
 
 	onMount(() => {
 		themeStore.initialize();

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import api from '$lib/utils/api';
 	import { getCongressPortraitUrl, getAvatarFallback } from '$lib/utils/urls';
-	import { getPartyAbbrev } from '$lib/utils/political';
+	import { getPartyAbbrev, getInitials } from '$lib/utils/political';
 
 	interface Official {
 		id: string;
@@ -18,16 +18,13 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	// Pagination state
 	const ITEMS_PER_PAGE = 20;
 	let housePage = $state(1);
 	let senatePage = $state(1);
 
-	// Filtered by chamber
 	const houseMembers = $derived(officials.filter((o) => o.chamber === 'house'));
 	const senateMembers = $derived(officials.filter((o) => o.chamber === 'senate'));
 
-	// Pagination calculations
 	const houseTotalPages = $derived(Math.ceil(houseMembers.length / ITEMS_PER_PAGE));
 	const senateTotalPages = $derived(Math.ceil(senateMembers.length / ITEMS_PER_PAGE));
 
@@ -62,18 +59,15 @@
 		return getCongressPortraitUrl(name, chamber as 'senate' | 'house');
 	}
 
-	// Try the other chamber portrait before falling back to avatar
 	function handlePortraitError(e: Event, name: string, currentChamber: string) {
 		const img = e.currentTarget as HTMLImageElement;
 		const otherChamber = currentChamber === 'house' ? 'senate' : 'house';
 		const otherUrl = getCongressPortraitUrl(name, otherChamber);
 
-		// If we haven't tried the other chamber yet
 		if (!img.dataset.triedOther) {
 			img.dataset.triedOther = 'true';
 			img.src = otherUrl;
 		} else {
-			// Both chambers failed, use avatar fallback
 			img.src = getAvatarFallback(name);
 		}
 	}
@@ -94,6 +88,14 @@
 		return pages;
 	}
 
+	function isRepublican(party: string | null): boolean {
+		return party?.toLowerCase().includes('republican') || false;
+	}
+
+	function isDemocrat(party: string | null): boolean {
+		return party?.toLowerCase().includes('democrat') || false;
+	}
+
 	$effect(() => {
 		loadOfficials();
 	});
@@ -104,9 +106,9 @@
 </svelte:head>
 
 <div class="politicians-page">
-	<!-- Header -->
 	<header class="page-header">
-		<h1 class="page-title">Politicians List <span class="count">({totalCount})</span></h1>
+		<h1 class="page-title">Congress Members</h1>
+		<p class="page-subtitle">{totalCount} politicians with disclosed stock trades</p>
 	</header>
 
 	{#if loading}
@@ -119,16 +121,12 @@
 			<button onclick={loadOfficials} class="retry-btn">Try Again</button>
 		</div>
 	{:else}
-		<!-- Two Column Layout -->
 		<div class="columns-container">
 			<!-- House Column -->
 			<div class="column">
 				<div class="column-header">
-					<h2>House <span class="count">({houseMembers.length})</span></h2>
-					<div class="column-labels">
-						<span class="label-name">NAME</span>
-						<span class="label-action">ACTION</span>
-					</div>
+					<h2>House of Representatives</h2>
+					<span class="member-count">{houseMembers.length} members</span>
 				</div>
 
 				<div class="member-list">
@@ -137,7 +135,7 @@
 							href="/political/member/{encodeURIComponent(member.name)}"
 							class="member-row"
 						>
-							<div class="member-info">
+							<div class="member-left">
 								<img
 									src={getPortraitUrl(member.name, 'house')}
 									alt=""
@@ -145,14 +143,31 @@
 									loading="lazy"
 									onerror={(e) => handlePortraitError(e, member.name, 'house')}
 								/>
-								<span class="member-name">{member.name}</span>
+								<div class="member-details">
+									<span class="member-name">{member.name}</span>
+									<div class="member-meta">
+										<span
+											class="party-badge"
+											class:republican={isRepublican(member.party)}
+											class:democrat={isDemocrat(member.party)}
+										>
+											{getPartyAbbrev(member.party)}
+										</span>
+										{#if member.state}
+											<span class="state">{member.state}</span>
+										{/if}
+									</div>
+								</div>
 							</div>
-							<span class="view-link">View Trades</span>
+							<div class="member-right">
+								<svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M9 18l6-6-6-6"></path>
+								</svg>
+							</div>
 						</a>
 					{/each}
 				</div>
 
-				<!-- House Pagination -->
 				{#if houseTotalPages > 1}
 					<div class="pagination">
 						<button
@@ -189,11 +204,8 @@
 			<!-- Senate Column -->
 			<div class="column">
 				<div class="column-header">
-					<h2>Senate <span class="count">({senateMembers.length})</span></h2>
-					<div class="column-labels">
-						<span class="label-name">NAME</span>
-						<span class="label-action">ACTION</span>
-					</div>
+					<h2>Senate</h2>
+					<span class="member-count">{senateMembers.length} members</span>
 				</div>
 
 				<div class="member-list">
@@ -202,7 +214,7 @@
 							href="/political/member/{encodeURIComponent(member.name)}"
 							class="member-row"
 						>
-							<div class="member-info">
+							<div class="member-left">
 								<img
 									src={getPortraitUrl(member.name, 'senate')}
 									alt=""
@@ -210,14 +222,31 @@
 									loading="lazy"
 									onerror={(e) => handlePortraitError(e, member.name, 'senate')}
 								/>
-								<span class="member-name">{member.name}</span>
+								<div class="member-details">
+									<span class="member-name">{member.name}</span>
+									<div class="member-meta">
+										<span
+											class="party-badge"
+											class:republican={isRepublican(member.party)}
+											class:democrat={isDemocrat(member.party)}
+										>
+											{getPartyAbbrev(member.party)}
+										</span>
+										{#if member.state}
+											<span class="state">{member.state}</span>
+										{/if}
+									</div>
+								</div>
 							</div>
-							<span class="view-link">View Trades</span>
+							<div class="member-right">
+								<svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M9 18l6-6-6-6"></path>
+								</svg>
+							</div>
 						</a>
 					{/each}
 				</div>
 
-				<!-- Senate Pagination -->
 				{#if senateTotalPages > 1}
 					<div class="pagination">
 						<button
@@ -259,33 +288,33 @@
 		max-width: 1400px;
 		margin: 0 auto;
 		padding: 2rem 1rem;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 	}
 
 	.page-header {
 		margin-bottom: 2rem;
-		padding-bottom: 1rem;
-		border-bottom: 2px dotted var(--color-ink);
 	}
 
 	.page-title {
-		font-size: 2rem;
+		font-size: 1.75rem;
 		font-weight: 700;
 		margin: 0;
 		color: var(--color-ink);
 	}
 
-	.count {
-		font-weight: 400;
+	.page-subtitle {
+		font-size: 0.875rem;
 		color: var(--color-ink-muted);
+		margin: 0.5rem 0 0;
 	}
 
 	.loading-state,
 	.error-state {
 		text-align: center;
 		padding: 3rem 1rem;
-		background: var(--color-newsprint);
+		background: var(--color-paper);
 		border: 1px solid var(--color-border);
+		border-radius: 10px;
 	}
 
 	.error-message {
@@ -296,8 +325,9 @@
 	.retry-btn {
 		padding: 0.5rem 1.5rem;
 		background: var(--color-ink);
-		color: var(--color-newsprint);
+		color: var(--color-paper);
 		border: none;
+		border-radius: 6px;
 		cursor: pointer;
 		font-family: inherit;
 	}
@@ -309,34 +339,35 @@
 	.columns-container {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 2rem;
+		gap: 1.5rem;
 	}
 
 	.column {
-		background: var(--color-newsprint);
+		background: var(--color-paper);
 		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		overflow: hidden;
 	}
 
 	.column-header {
-		padding: 1rem 1.5rem;
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		padding: 1rem 1.25rem;
 		border-bottom: 1px solid var(--color-border);
+		background: var(--color-newsprint);
 	}
 
 	.column-header h2 {
-		font-size: 1.25rem;
+		font-size: 1rem;
 		font-weight: 700;
-		margin: 0 0 0.75rem;
+		margin: 0;
 		color: var(--color-ink);
 	}
 
-	.column-labels {
-		display: flex;
-		justify-content: space-between;
-		font-size: 0.7rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		color: var(--color-ink-faint);
-		letter-spacing: 0.05em;
+	.member-count {
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
 	}
 
 	.member-list {
@@ -347,55 +378,111 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0.75rem 1.5rem;
+		padding: 0.875rem 1.25rem;
 		text-decoration: none;
 		color: inherit;
-		border-bottom: 1px dotted var(--color-border);
+		border-bottom: 1px solid var(--color-border);
 		transition: background-color 0.15s;
 	}
 
 	.member-row:hover {
-		background-color: var(--color-newsprint-dark);
+		background-color: var(--color-newsprint);
 	}
 
 	.member-row:last-child {
 		border-bottom: none;
 	}
 
-	.member-info {
+	.member-left {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.875rem;
 		min-width: 0;
 	}
 
 	.member-portrait {
 		width: 44px;
-		height: 54px;
-		object-fit: contain;
-		background: var(--color-paper, #fff);
-		border: 1px solid var(--color-border);
+		height: 44px;
+		border-radius: 50%;
+		object-fit: cover;
+		object-position: top;
+		background: var(--color-newsprint);
+		border: 2px solid var(--color-border);
 		flex-shrink: 0;
 	}
 
+	.member-details {
+		min-width: 0;
+	}
+
 	.member-name {
-		font-weight: 500;
-		font-size: 0.9rem;
-		color: var(--color-ink);
-	}
-
-	.view-link {
+		display: block;
+		font-weight: 600;
 		font-size: 0.875rem;
-		color: var(--color-ink-muted);
-		white-space: nowrap;
-	}
-
-	.member-row:hover .view-link {
 		color: var(--color-ink);
-		text-decoration: underline;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 200px;
 	}
 
-	/* Pagination */
+	.member-meta {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.25rem;
+	}
+
+	.party-badge {
+		font-size: 0.6875rem;
+		font-weight: 700;
+		padding: 0.125rem 0.5rem;
+		border-radius: 3px;
+		background: var(--color-newsprint-dark);
+		color: var(--color-ink-muted);
+	}
+
+	.party-badge.republican {
+		background: #fee2e2;
+		color: #b91c1c;
+	}
+
+	.party-badge.democrat {
+		background: #dbeafe;
+		color: #1d4ed8;
+	}
+
+	:global([data-theme='dark']) .party-badge.republican {
+		background: #450a0a;
+		color: #fca5a5;
+	}
+
+	:global([data-theme='dark']) .party-badge.democrat {
+		background: #1e3a5f;
+		color: #93c5fd;
+	}
+
+	.state {
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+	}
+
+	.member-right {
+		flex-shrink: 0;
+	}
+
+	.arrow-icon {
+		width: 1.25rem;
+		height: 1.25rem;
+		color: var(--color-ink-muted);
+		transition: transform 0.15s, color 0.15s;
+	}
+
+	.member-row:hover .arrow-icon {
+		color: var(--color-ink);
+		transform: translateX(3px);
+	}
+
 	.pagination {
 		display: flex;
 		justify-content: center;
@@ -403,12 +490,14 @@
 		gap: 0.25rem;
 		padding: 1rem;
 		border-top: 1px solid var(--color-border);
+		background: var(--color-newsprint);
 	}
 
 	.page-btn {
 		padding: 0.375rem 0.75rem;
-		background: var(--color-newsprint);
+		background: var(--color-paper);
 		border: 1px solid var(--color-border);
+		border-radius: 4px;
 		font-family: inherit;
 		font-size: 0.8rem;
 		cursor: pointer;
@@ -427,7 +516,7 @@
 
 	.page-btn.active {
 		background: var(--color-ink);
-		color: var(--color-newsprint);
+		color: var(--color-paper);
 		border-color: var(--color-ink);
 	}
 
@@ -439,6 +528,10 @@
 	@media (max-width: 900px) {
 		.columns-container {
 			grid-template-columns: 1fr;
+		}
+
+		.member-name {
+			max-width: 180px;
 		}
 	}
 </style>

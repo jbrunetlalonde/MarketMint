@@ -452,6 +452,7 @@
 		padding: 1rem;
 		background: var(--color-paper);
 		border: 1px solid var(--color-border);
+		border-radius: 10px;
 	}
 
 	.stock-logo {
@@ -526,6 +527,7 @@
 		font-size: 0.875rem;
 		padding: 1rem;
 		border: 1px solid var(--color-border);
+		border-radius: 10px;
 		background: var(--color-paper);
 		color: var(--color-ink);
 	}
@@ -537,15 +539,16 @@
 
 	.search-results {
 		position: absolute;
-		top: 100%;
+		top: calc(100% + 4px);
 		left: 0;
 		right: 0;
 		background: var(--color-paper);
 		border: 1px solid var(--color-border);
-		border-top: none;
+		border-radius: 10px;
 		z-index: 100;
 		max-height: 300px;
 		overflow-y: auto;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 	}
 
 	.result-item {
@@ -610,6 +613,7 @@
 		text-align: center;
 		background: var(--color-paper);
 		border: 1px solid var(--color-border);
+		border-radius: 10px;
 	}
 
 	.empty-state p {
@@ -644,6 +648,7 @@
 		font-size: 0.75rem;
 		padding: 0.5rem 1rem;
 		border: 1px solid var(--color-border);
+		border-radius: 6px;
 		text-decoration: none;
 		color: var(--color-ink);
 		transition: all 0.15s;

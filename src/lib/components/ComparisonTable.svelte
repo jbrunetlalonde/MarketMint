@@ -180,7 +180,9 @@
 
 	.section {
 		border: 1px solid var(--color-border);
+		border-radius: 10px;
 		background: var(--color-paper);
+		overflow: hidden;
 	}
 
 	.section-title {

@@ -152,13 +152,12 @@
 				</div>
 			{/each}
 		</div>
-		<a href="/earnings" class="view-all">View Full Calendar</a>
 	{/if}
 </div>
 
 <style>
 	.earnings-widget {
-		margin-top: 0.5rem;
+		/* Container styles */
 	}
 
 	.loading {
@@ -303,21 +302,4 @@
 		padding: 0.25rem 0.5rem;
 	}
 
-	.view-all {
-		display: block;
-		margin-top: 0.875rem;
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		font-weight: 500;
-		color: var(--color-ink-muted);
-		text-decoration: none;
-		text-align: center;
-		padding: 0.5rem;
-		border-top: 1px solid var(--color-border);
-		transition: color 0.15s;
-	}
-
-	.view-all:hover {
-		color: var(--color-ink);
-	}
 </style>
