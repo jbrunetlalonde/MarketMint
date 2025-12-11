@@ -1352,14 +1352,52 @@ export async function searchSymbols(query, limit = 10) {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      // Use new stable search-symbol endpoint
-      const data = await fetchFMP(`/search-symbol?query=${encodeURIComponent(query)}&limit=${limit * 3}`);
+      // Use new stable search-symbol endpoint - fetch extra to account for filtering
+      const data = await fetchFMP(`/search-symbol?query=${encodeURIComponent(query)}&limit=${limit * 5}`);
 
       const formatted = (Array.isArray(data) ? data : []).map(item => ({
         symbol: item.symbol,
         name: item.name,
         exchange: item.exchangeFullName || item.exchange || item.stockExchange || item.exchangeShortName || 'N/A'
       }));
+
+      // Filter out derivative products (leveraged ETFs, inverse funds, options income funds)
+      const derivativePatterns = [
+        /\b(bull|bear)\b/i,
+        /\b(long|short)\b/i,
+        /\b[0-9]+x\b/i,
+        /\bleveraged\b/i,
+        /\binverse\b/i,
+        /\bdaily\b/i,
+        /\byieldmax\b/i,
+        /\boption inc/i,
+        /\bproshares\b/i,
+        /\bdirexion\b/i,
+        /\bgraniteshares\b/i,
+        /\btradr\b/i,
+        /\bultra\b/i,
+        /\broundhill\b/i
+      ];
+
+      const isDerivative = (name) => derivativePatterns.some(pattern => pattern.test(name));
+
+      // Only show major US exchanges
+      const allowedExchanges = [
+        'NASDAQ',
+        'NYSE',
+        'AMEX',
+        'New York Stock Exchange',
+        'NASDAQ Global Select',
+        'NASDAQ Global Market',
+        'NASDAQ Capital Market'
+      ];
+
+      const isAllowedExchange = (exchange) =>
+        allowedExchanges.some(allowed => exchange.toUpperCase().includes(allowed.toUpperCase()));
+
+      const filtered = formatted.filter(item =>
+        !isDerivative(item.name) && isAllowedExchange(item.exchange)
+      );
 
       // Sort results to prioritize:
       // 1. Exact symbol matches
@@ -1369,7 +1407,7 @@ export async function searchSymbols(query, limit = 10) {
       const queryUpper = query.toUpperCase();
       const priorityExchanges = ['NASDAQ', 'NYSE', 'AMEX', 'New York Stock Exchange', 'NASDAQ Global Select'];
 
-      formatted.sort((a, b) => {
+      filtered.sort((a, b) => {
         // Exact symbol match gets highest priority
         const aExactMatch = a.symbol === queryUpper;
         const bExactMatch = b.symbol === queryUpper;
@@ -1397,7 +1435,7 @@ export async function searchSymbols(query, limit = 10) {
         return 0;
       });
 
-      const result = formatted.slice(0, limit);
+      const result = filtered.slice(0, limit);
       setMemoryCache(cacheKey, result, ttl);
       return result;
     } catch (err) {
