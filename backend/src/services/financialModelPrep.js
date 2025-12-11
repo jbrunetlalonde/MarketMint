@@ -253,8 +253,47 @@ export async function getQuote(ticker) {
   });
 }
 
-export async function getHistoricalPrices(ticker, period = '1y') {
-  const cacheKey = getCacheKey('history', ticker, period);
+export async function getHistoricalPrices(ticker, fromDate = null, toDate = null) {
+  // Support both (ticker, period) and (ticker, fromDate, toDate) signatures
+  let from, to;
+  const periods = ['1d', '5d', '1m', '3m', '6m', 'ytd', '1y', '5y', '10y', 'max'];
+
+  if (periods.includes(fromDate)) {
+    // Called with period string (old signature)
+    const period = fromDate;
+    to = new Date();
+    from = new Date();
+
+    switch (period) {
+      case '1d': from.setDate(from.getDate() - 7); break; // Get week for 1d fallback
+      case '5d': from.setDate(from.getDate() - 14); break;
+      case '1m': from.setMonth(from.getMonth() - 1); break;
+      case '3m': from.setMonth(from.getMonth() - 3); break;
+      case '6m': from.setMonth(from.getMonth() - 6); break;
+      case 'ytd':
+        from.setMonth(0);
+        from.setDate(1);
+        break;
+      case '1y': from.setFullYear(from.getFullYear() - 1); break;
+      case '5y': from.setFullYear(from.getFullYear() - 5); break;
+      case '10y': from.setFullYear(from.getFullYear() - 10); break;
+      case 'max': from.setFullYear(from.getFullYear() - 20); break;
+      default: from.setFullYear(from.getFullYear() - 1);
+    }
+  } else if (fromDate && toDate) {
+    // Called with date range (new signature)
+    from = typeof fromDate === 'string' ? new Date(fromDate) : fromDate;
+    to = typeof toDate === 'string' ? new Date(toDate) : toDate;
+  } else {
+    // Default: 1 year
+    to = new Date();
+    from = new Date();
+    from.setFullYear(from.getFullYear() - 1);
+  }
+
+  const fromStr = from.toISOString().split('T')[0];
+  const toStr = to.toISOString().split('T')[0];
+  const cacheKey = getCacheKey('history', ticker, `${fromStr}-${toStr}`);
   const ttl = config.cacheTTL.priceHistory;
 
   const cached = getFromMemoryCache(cacheKey);
@@ -262,45 +301,28 @@ export async function getHistoricalPrices(ticker, period = '1y') {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFMP(`/historical-price-eod/full?symbol=${ticker}`);
+      const data = await fetchFMP(`/historical-price-eod/full?symbol=${ticker}&from=${fromStr}&to=${toStr}`);
 
       if (!Array.isArray(data) || data.length === 0) {
-        throw new Error('No historical data');
+        console.log(`[FMP] No historical data for ${ticker} from ${fromStr} to ${toStr}`);
+        return [];
       }
 
-      const endDate = new Date();
-      const startDate = new Date();
-
-      switch (period) {
-        case '1d': startDate.setDate(startDate.getDate() - 1); break;
-        case '5d': startDate.setDate(startDate.getDate() - 5); break;
-        case '1m': startDate.setMonth(startDate.getMonth() - 1); break;
-        case '3m': startDate.setMonth(startDate.getMonth() - 3); break;
-        case '6m': startDate.setMonth(startDate.getMonth() - 6); break;
-        case 'ytd':
-          startDate.setMonth(0);
-          startDate.setDate(1);
-          break;
-        case '1y': startDate.setFullYear(startDate.getFullYear() - 1); break;
-        case '5y': startDate.setFullYear(startDate.getFullYear() - 5); break;
-        case '10y': startDate.setFullYear(startDate.getFullYear() - 10); break;
-        default: startDate.setFullYear(startDate.getFullYear() - 1);
-      }
-
-      const history = data
-        .filter(item => new Date(item.date) >= startDate)
-        .map(item => ({
-          date: item.date,
-          close: item.close,
-          volume: item.volume
-        }))
-        .reverse();
+      const history = data.map(item => ({
+        date: item.date,
+        open: item.open,
+        high: item.high,
+        low: item.low,
+        close: item.close,
+        volume: item.volume,
+        adjClose: item.adjClose || item.close
+      })).reverse(); // Oldest first
 
       setMemoryCache(cacheKey, history, ttl);
       return history;
     } catch (err) {
       console.error(`FMP historical error for ${ticker}:`, err.message);
-      throw new Error(`Failed to fetch historical data for ${ticker}`);
+      return [];
     }
   });
 }
@@ -1674,18 +1696,12 @@ export async function getOHLCV(ticker, period = '1y') {
 
   return deduplicatedRequest(cacheKey, async () => {
     try {
-      const data = await fetchFMP(`/historical-price-eod/full?symbol=${ticker}`);
-
-      if (!Array.isArray(data) || data.length === 0) {
-        throw new Error('No OHLCV data');
-      }
-
       const endDate = new Date();
       const startDate = new Date();
 
       switch (period) {
-        case '1d': startDate.setDate(startDate.getDate() - 1); break;
-        case '5d': startDate.setDate(startDate.getDate() - 5); break;
+        case '1d': startDate.setDate(startDate.getDate() - 7); break; // Extra days for fallback
+        case '5d': startDate.setDate(startDate.getDate() - 14); break;
         case '1m': startDate.setMonth(startDate.getMonth() - 1); break;
         case '3m': startDate.setMonth(startDate.getMonth() - 3); break;
         case '6m': startDate.setMonth(startDate.getMonth() - 6); break;
@@ -1696,26 +1712,34 @@ export async function getOHLCV(ticker, period = '1y') {
         case '1y': startDate.setFullYear(startDate.getFullYear() - 1); break;
         case '5y': startDate.setFullYear(startDate.getFullYear() - 5); break;
         case '10y': startDate.setFullYear(startDate.getFullYear() - 10); break;
+        case 'max': startDate.setFullYear(startDate.getFullYear() - 20); break;
         default: startDate.setFullYear(startDate.getFullYear() - 1);
       }
 
-      const history = data
-        .filter(item => new Date(item.date) >= startDate)
-        .map(item => ({
-          time: item.date,
-          open: item.open,
-          high: item.high,
-          low: item.low,
-          close: item.close,
-          volume: item.volume
-        }))
-        .reverse();
+      const fromStr = startDate.toISOString().split('T')[0];
+      const toStr = endDate.toISOString().split('T')[0];
+
+      const data = await fetchFMP(`/historical-price-eod/full?symbol=${ticker}&from=${fromStr}&to=${toStr}`);
+
+      if (!Array.isArray(data) || data.length === 0) {
+        console.log(`[FMP] No OHLCV data for ${ticker} from ${fromStr} to ${toStr}`);
+        return [];
+      }
+
+      const history = data.map(item => ({
+        time: item.date,
+        open: item.open,
+        high: item.high,
+        low: item.low,
+        close: item.close,
+        volume: item.volume
+      })).reverse(); // Oldest first
 
       setMemoryCache(cacheKey, history, ttl);
       return history;
     } catch (err) {
       console.error(`FMP OHLCV error for ${ticker}:`, err.message);
-      throw new Error(`Failed to fetch OHLCV data for ${ticker}`);
+      return [];
     }
   });
 }
@@ -2347,6 +2371,281 @@ export async function getPriceTargetSummary(ticker) {
   });
 }
 
+// ============================================================================
+// FMP STARTER PACK EXPANSION - New Endpoints
+// ============================================================================
+
+// Financial Scores (Piotroski F-Score & Altman Z-Score)
+export async function getFinancialScore(ticker) {
+  const cacheKey = getCacheKey('score', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/financial-scores?symbol=${ticker}`);
+      const score = Array.isArray(data) ? data[0] : data;
+
+      const formatted = {
+        symbol: ticker,
+        piotroskiScore: score?.piotroskiScore ?? null,
+        altmanZScore: score?.altmanZScore ?? null,
+        workingCapital: score?.workingCapital ?? null,
+        totalAssets: score?.totalAssets ?? null,
+        retainedEarnings: score?.retainedEarnings ?? null,
+        ebit: score?.ebit ?? null,
+        marketCap: score?.marketCap ?? null,
+        totalLiabilities: score?.totalLiabilities ?? null,
+        revenue: score?.revenue ?? null
+      };
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP financial score not available for ${ticker}:`, err.message);
+      return null;
+    }
+  });
+}
+
+// Shares Float (Float, Outstanding Shares, Free Float %)
+export async function getSharesFloat(ticker) {
+  const cacheKey = getCacheKey('float', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/shares-float?symbol=${ticker}`);
+      const floatData = Array.isArray(data) ? data[0] : data;
+
+      const formatted = {
+        symbol: ticker,
+        floatShares: floatData?.floatShares ?? null,
+        outstandingShares: floatData?.outstandingShares ?? null,
+        freeFloat: floatData?.freeFloat ?? null,
+        date: floatData?.date ?? null
+      };
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP shares float not available for ${ticker}:`, err.message);
+      return null;
+    }
+  });
+}
+
+// Industry Performance (market-wide, like sector performance)
+export async function getIndustryPerformance() {
+  const cacheKey = 'fmp:industryPerformance';
+  const ttl = 3600; // 1 hour cache
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP('/industry-performance');
+
+      const formatted = data.map(item => ({
+        industry: item.industry,
+        changePercent: item.changesPercentage ?? item.changePercent ?? 0
+      })).filter(item => item.industry);
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn('FMP industry performance not available:', err.message);
+      return [];
+    }
+  });
+}
+
+// Insider Trade Statistics (aggregated insider sentiment)
+export async function getInsiderTradeStats(ticker) {
+  const cacheKey = getCacheKey('insiderStats', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/insider-trading/statistics?symbol=${ticker}`);
+      const stats = Array.isArray(data) ? data[0] : data;
+
+      const formatted = {
+        symbol: ticker,
+        totalBought: stats?.totalAcquired ?? 0,
+        totalSold: stats?.totalDisposed ?? 0,
+        buyCount: stats?.acquiredTransactions ?? 0,
+        sellCount: stats?.disposedTransactions ?? 0,
+        averageBuyPrice: stats?.averageAcquired ?? null,
+        averageSellPrice: stats?.averageDisposed ?? null,
+        year: stats?.year ?? null,
+        quarter: stats?.quarter ?? null,
+        periodStart: stats?.year && stats?.quarter ? `${stats.year}-Q${stats.quarter}` : null,
+        periodEnd: null
+      };
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP insider trade stats not available for ${ticker}:`, err.message);
+      return null;
+    }
+  });
+}
+
+// Aftermarket Quotes (pre/post market prices)
+export async function getAftermarketQuote(ticker) {
+  const cacheKey = getCacheKey('aftermarket', ticker);
+  const ttl = 60; // 1 minute cache for real-time data
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/pre-post-market?symbol=${ticker}`);
+      const quote = Array.isArray(data) ? data[0] : data;
+
+      const formatted = {
+        symbol: ticker,
+        preMarketPrice: quote?.preMarketPrice ?? null,
+        preMarketChange: quote?.preMarketChange ?? null,
+        preMarketChangePercent: quote?.preMarketChangePercent ?? null,
+        postMarketPrice: quote?.postMarketPrice ?? null,
+        postMarketChange: quote?.postMarketChange ?? null,
+        postMarketChangePercent: quote?.postMarketChangePercent ?? null,
+        timestamp: quote?.timestamp ?? null
+      };
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP aftermarket quote not available for ${ticker}:`, err.message);
+      return null;
+    }
+  });
+}
+
+// TTM Income Statement (Trailing Twelve Months)
+export async function getIncomeStatementTTM(ticker) {
+  const cacheKey = getCacheKey('incomeTTM', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/income-statement?symbol=${ticker}&period=ttm`);
+      const statement = Array.isArray(data) ? data[0] : data;
+
+      if (!statement) return null;
+
+      const formatted = {
+        symbol: ticker,
+        period: 'TTM',
+        revenue: statement.revenue,
+        costOfRevenue: statement.costOfRevenue,
+        grossProfit: statement.grossProfit,
+        operatingExpenses: statement.operatingExpenses,
+        operatingIncome: statement.operatingIncome,
+        netIncome: statement.netIncome,
+        eps: statement.eps,
+        epsDiluted: statement.epsdiluted,
+        ebitda: statement.ebitda
+      };
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP TTM income statement not available for ${ticker}:`, err.message);
+      return null;
+    }
+  });
+}
+
+// TTM Balance Sheet (Trailing Twelve Months)
+export async function getBalanceSheetTTM(ticker) {
+  const cacheKey = getCacheKey('balanceTTM', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/balance-sheet-statement?symbol=${ticker}&period=ttm`);
+      const statement = Array.isArray(data) ? data[0] : data;
+
+      if (!statement) return null;
+
+      const formatted = {
+        symbol: ticker,
+        period: 'TTM',
+        cashAndCashEquivalents: statement.cashAndCashEquivalents,
+        shortTermInvestments: statement.shortTermInvestments,
+        totalCurrentAssets: statement.totalCurrentAssets,
+        totalAssets: statement.totalAssets,
+        totalCurrentLiabilities: statement.totalCurrentLiabilities,
+        totalLiabilities: statement.totalLiabilities,
+        totalEquity: statement.totalStockholdersEquity,
+        totalDebt: statement.totalDebt,
+        netDebt: statement.netDebt
+      };
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP TTM balance sheet not available for ${ticker}:`, err.message);
+      return null;
+    }
+  });
+}
+
+// TTM Cash Flow Statement (Trailing Twelve Months)
+export async function getCashFlowTTM(ticker) {
+  const cacheKey = getCacheKey('cashflowTTM', ticker);
+  const ttl = config.cacheTTL.financials;
+
+  const cached = getFromMemoryCache(cacheKey);
+  if (cached) return cached;
+
+  return deduplicatedRequest(cacheKey, async () => {
+    try {
+      const data = await fetchFMP(`/cash-flow-statement?symbol=${ticker}&period=ttm`);
+      const statement = Array.isArray(data) ? data[0] : data;
+
+      if (!statement) return null;
+
+      const formatted = {
+        symbol: ticker,
+        period: 'TTM',
+        netIncome: statement.netIncome,
+        operatingCashFlow: statement.operatingCashFlow,
+        investingCashFlow: statement.netCashUsedForInvestingActivites,
+        financingCashFlow: statement.netCashUsedProvidedByFinancingActivities,
+        freeCashFlow: statement.freeCashFlow,
+        capitalExpenditure: statement.capitalExpenditure
+      };
+
+      setMemoryCache(cacheKey, formatted, ttl);
+      return formatted;
+    } catch (err) {
+      console.warn(`FMP TTM cash flow not available for ${ticker}:`, err.message);
+      return null;
+    }
+  });
+}
+
 // Batch quotes for multiple tickers
 export async function getBatchQuotes(tickers) {
   const tickerList = Array.isArray(tickers) ? tickers : tickers.split(',');
@@ -2448,7 +2747,16 @@ export default {
   getETFHoldings,
   getMutualFundHolders,
   // Press releases
-  getPressReleases
+  getPressReleases,
+  // FMP Starter Pack Expansion
+  getFinancialScore,
+  getSharesFloat,
+  getIndustryPerformance,
+  getInsiderTradeStats,
+  getAftermarketQuote,
+  getIncomeStatementTTM,
+  getBalanceSheetTTM,
+  getCashFlowTTM
 };
 
 // Technical indicator calculations

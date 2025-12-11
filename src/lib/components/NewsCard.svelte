@@ -25,12 +25,12 @@
 	}
 </script>
 
-<a href={url} target="_blank" rel="noopener noreferrer" class="news-card card block">
+<a href={url} target="_blank" rel="noopener noreferrer" class="news-card">
 	{#if sentiment}
 		<span class="badge">{sentiment}</span>
 	{/if}
-	<h3 class="font-semibold mt-2">{title}</h3>
-	<p class="byline mt-2">
+	<h3 class="news-title">{title}</h3>
+	<p class="byline">
 		{source || 'News'}
 		{#if formatNewsTime(publishedAt)}
 			&mdash; {formatNewsTime(publishedAt)}
@@ -40,22 +40,35 @@
 
 <style>
 	.news-card {
+		display: block;
 		text-decoration: none;
 		color: inherit;
-		transition: transform 0.15s ease, box-shadow 0.15s ease;
-		cursor: pointer;
+		padding: 0.75rem 0;
+		border-bottom: 1px dotted var(--color-border);
+		transition: background 0.15s ease;
 	}
 
 	.news-card:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+		background: var(--color-newsprint);
 	}
 
-	.news-card h3 {
-		transition: color 0.15s ease;
+	.news-title {
+		font-family: var(--font-mono);
+		font-size: 0.875rem;
+		font-weight: 600;
+		line-height: 1.4;
+		margin: 0.5rem 0;
+		color: var(--color-ink);
 	}
 
-	.news-card:hover h3 {
+	.news-card:hover .news-title {
 		color: var(--color-neutral);
+	}
+
+	.byline {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+		margin: 0;
 	}
 </style>

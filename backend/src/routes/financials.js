@@ -1150,4 +1150,183 @@ router.get('/:ticker/press-releases', async (req, res, next) => {
   }
 });
 
+// ============================================================================
+// FMP STARTER PACK EXPANSION - New Endpoints
+// ============================================================================
+
+/**
+ * GET /api/financials/:ticker/score
+ * Get financial health scores (Piotroski F-Score & Altman Z-Score)
+ */
+router.get('/:ticker/score', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getFinancialScore(validation.ticker);
+      res.json({ success: true, data });
+    } catch (err) {
+      logger.warn('Financial score fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/float
+ * Get shares float data
+ */
+router.get('/:ticker/float', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getSharesFloat(validation.ticker);
+      res.json({ success: true, data });
+    } catch (err) {
+      logger.warn('Shares float fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/insider-stats
+ * Get aggregated insider trading statistics
+ */
+router.get('/:ticker/insider-stats', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getInsiderTradeStats(validation.ticker);
+      res.json({ success: true, data });
+    } catch (err) {
+      logger.warn('Insider stats fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/aftermarket
+ * Get pre/post market quotes
+ */
+router.get('/:ticker/aftermarket', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getAftermarketQuote(validation.ticker);
+      res.json({ success: true, data });
+    } catch (err) {
+      logger.warn('Aftermarket quote fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/income-ttm
+ * Get trailing twelve months income statement
+ */
+router.get('/:ticker/income-ttm', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getIncomeStatementTTM(validation.ticker);
+      res.json({ success: true, data });
+    } catch (err) {
+      logger.warn('TTM income statement fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/balance-ttm
+ * Get trailing twelve months balance sheet
+ */
+router.get('/:ticker/balance-ttm', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getBalanceSheetTTM(validation.ticker);
+      res.json({ success: true, data });
+    } catch (err) {
+      logger.warn('TTM balance sheet fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/financials/:ticker/cashflow-ttm
+ * Get trailing twelve months cash flow statement
+ */
+router.get('/:ticker/cashflow-ttm', async (req, res, next) => {
+  try {
+    const { ticker } = req.params;
+
+    const validation = validateTicker(ticker);
+    if (!validation.valid) {
+      throw new ApiError(400, validation.error);
+    }
+
+    try {
+      const data = await fmp.getCashFlowTTM(validation.ticker);
+      res.json({ success: true, data });
+    } catch (err) {
+      logger.warn('TTM cash flow fetch failed', { ticker: validation.ticker, error: err.message });
+      res.json({ success: true, data: null, error: { code: 'FMP_ERROR', message: err.message } });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

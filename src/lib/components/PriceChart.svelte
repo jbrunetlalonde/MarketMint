@@ -16,10 +16,19 @@
 		color?: string;
 	}
 
-	let { data, height = 300, color = '#f59e0b' }: Props = $props();
+	let { data, height = 300, color }: Props = $props();
 
 	const isDark = $derived(themeStore.resolvedTheme === 'dark');
 	const colors = $derived(getTheme(isDark));
+
+	// Determine chart color based on trend (first vs last price)
+	const trendColor = $derived.by(() => {
+		if (color) return color; // Use explicit color if provided
+		if (data.length < 2) return '#6b7280'; // Gray for insufficient data
+		const firstPrice = data[0].close;
+		const lastPrice = data[data.length - 1].close;
+		return lastPrice >= firstPrice ? '#0d7a3e' : '#c41e3a'; // Green for up, red for down
+	});
 
 	const chartOptions = $derived.by((): EChartsOption | null => {
 		if (data.length === 0) return null;
@@ -97,7 +106,7 @@
 					symbol: 'none',
 					lineStyle: {
 						width: 2,
-						color: color
+						color: trendColor
 					},
 					areaStyle: {
 						color: {
@@ -107,8 +116,8 @@
 							x2: 0,
 							y2: 1,
 							colorStops: [
-								{ offset: 0, color: `${color}40` },
-								{ offset: 1, color: `${color}05` }
+								{ offset: 0, color: `${trendColor}40` },
+								{ offset: 1, color: `${trendColor}05` }
 							]
 						}
 					}

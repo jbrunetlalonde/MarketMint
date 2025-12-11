@@ -238,6 +238,149 @@ Keep it simple and accessible for retail investors.`;
 }
 
 /**
+ * Generate explanation for a financial section with caching
+ * @param {string} ticker - Stock ticker
+ * @param {string} sectionType - Type: cashflow, income, balance, grades, ratings, insider, congress
+ * @param {object} data - Relevant data for the section
+ * @param {boolean} forceRefresh - Skip cache if true
+ */
+export async function explainSection(ticker, sectionType, data, forceRefresh = false) {
+  if (!config.openaiApiKey) {
+    throw new Error('OpenAI API key not configured');
+  }
+
+  const upperTicker = ticker.toUpperCase();
+  const cacheKey = `section:${sectionType}`;
+
+  // Check cache first
+  if (!forceRefresh) {
+    const cached = await getCachedAnalysis(upperTicker, cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  // Build prompt based on section type
+  const prompt = buildSectionPrompt(sectionType, upperTicker, data);
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a financial educator helping retail investors understand stock data. Be concise, clear, and avoid jargon. Focus on what the numbers mean for the investment thesis.'
+        },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 400
+    });
+
+    const explanation = completion.choices[0]?.message?.content;
+    if (!explanation) {
+      throw new Error('No response from OpenAI');
+    }
+
+    const result = {
+      ticker: upperTicker,
+      sectionType,
+      explanation
+    };
+
+    // Cache the result
+    await cacheAnalysis(upperTicker, cacheKey, result);
+
+    return {
+      ...result,
+      cached: false,
+      generatedAt: new Date().toISOString()
+    };
+  } catch (err) {
+    console.error(`OpenAI section explanation error (${sectionType}):`, err);
+    throw new Error(`Failed to generate explanation: ${err.message}`);
+  }
+}
+
+/**
+ * Build prompt based on section type
+ */
+function buildSectionPrompt(sectionType, ticker, data) {
+  const prompts = {
+    cashflow: `Explain this cash flow data for ${ticker} in 3-4 sentences:
+Operating Cash Flow: ${formatNumber(data.operatingCashFlow)}
+Investing Cash Flow: ${formatNumber(data.investingCashFlow)}
+Financing Cash Flow: ${formatNumber(data.financingCashFlow)}
+Free Cash Flow: ${formatNumber(data.freeCashFlow)}
+
+Focus on: Is the company generating cash from operations? Are they investing in growth or paying down debt? Is the cash flow healthy?`,
+
+    income: `Explain this income statement data for ${ticker} in 3-4 sentences:
+Revenue: ${formatNumber(data.revenue)}
+Net Income: ${formatNumber(data.netIncome)}
+Gross Margin: ${data.grossMargin}%
+Operating Margin: ${data.operatingMargin}%
+Net Margin: ${data.netMargin}%
+
+Focus on: Is the company profitable? Are margins healthy? Any concerning trends?`,
+
+    balance: `Explain this balance sheet data for ${ticker} in 3-4 sentences:
+Total Assets: ${formatNumber(data.totalAssets)}
+Total Liabilities: ${formatNumber(data.totalLiabilities)}
+Total Equity: ${formatNumber(data.totalEquity)}
+Debt to Equity: ${data.debtToEquity}
+Current Ratio: ${data.currentRatio}
+
+Focus on: Is the company's financial position strong? Is debt manageable? Can they meet short-term obligations?`,
+
+    grades: `Explain this analyst grade data for ${ticker} in 3-4 sentences:
+Recent Actions: ${data.recentGrades || 'N/A'}
+Consensus: ${data.consensus || 'N/A'}
+Upgrades (90 days): ${data.upgrades || 0}
+Downgrades (90 days): ${data.downgrades || 0}
+
+Focus on: What do Wall Street analysts think? Is sentiment improving or declining? What does the consensus suggest?`,
+
+    ratings: `Explain this rating data for ${ticker} in 3-4 sentences:
+Rating Score: ${data.ratingScore}/5
+Recommendation: ${data.recommendation}
+DCF Value: ${formatNumber(data.dcfValue)}
+Current Price: ${formatNumber(data.currentPrice)}
+
+Focus on: Is the stock fairly valued? What does the rating suggest about buy/sell/hold? How does DCF compare to price?`,
+
+    insider: `Explain this insider trading data for ${ticker} in 3-4 sentences:
+Buy Transactions: ${data.buyCount || 0} (${formatNumber(data.buyValue)})
+Sell Transactions: ${data.sellCount || 0} (${formatNumber(data.sellValue)})
+Net Position: ${formatNumber(data.netValue)}
+
+Focus on: Are insiders buying or selling? What does this typically signal about management confidence? Any red flags?`,
+
+    congress: `Explain this congressional trading data for ${ticker} in 3-4 sentences:
+Recent Trades: ${data.tradeCount || 0}
+Buy/Sell: ${data.buys || 0} buys, ${data.sells || 0} sells
+Notable Traders: ${data.traders || 'N/A'}
+
+Focus on: Are politicians trading this stock? What might this indicate? Note any potential information advantages.`
+  };
+
+  return prompts[sectionType] || `Explain the following data for ${ticker}:\n${JSON.stringify(data, null, 2)}`;
+}
+
+/**
+ * Format number for display in prompts
+ */
+function formatNumber(value) {
+  if (value == null) return 'N/A';
+  const num = Number(value);
+  if (isNaN(num)) return 'N/A';
+  if (Math.abs(num) >= 1e9) return `$${(num / 1e9).toFixed(2)}B`;
+  if (Math.abs(num) >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
+  if (Math.abs(num) >= 1e3) return `$${(num / 1e3).toFixed(2)}K`;
+  return `$${num.toFixed(2)}`;
+}
+
+/**
  * Check if OpenAI is configured
  */
 export function isConfigured() {
@@ -247,5 +390,6 @@ export function isConfigured() {
 export default {
   generateSWOT,
   explainMetric,
+  explainSection,
   isConfigured
 };

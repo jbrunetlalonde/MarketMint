@@ -24,6 +24,10 @@
 	import TechnicalIndicators from '$lib/components/TechnicalIndicators.svelte';
 	import AnalystEstimates from '$lib/components/AnalystEstimates.svelte';
 	import DividendHistory from '$lib/components/DividendHistory.svelte';
+	import FinancialScores from '$lib/components/FinancialScores.svelte';
+	import InsiderActivity from '$lib/components/InsiderActivity.svelte';
+	import StockSectorInfo from '$lib/components/StockSectorInfo.svelte';
+	import AIExplainButton from '$lib/components/AIExplainButton.svelte';
 
 	const symbol = $derived(page.params.symbol?.toUpperCase() || '');
 
@@ -31,10 +35,15 @@
 	let chartLoading = $state(false);
 	let error = $state<string | null>(null);
 	let selectedPeriod = $state('3m');
-	let incomePeriod = $state<'annual' | 'quarter'>('quarter');
-	let balancePeriod = $state<'annual' | 'quarter'>('quarter');
-	let cashflowPeriod = $state<'annual' | 'quarter'>('quarter');
+	let incomePeriod = $state<'annual' | 'quarter' | 'ttm'>('quarter');
+	let balancePeriod = $state<'annual' | 'quarter' | 'ttm'>('quarter');
+	let cashflowPeriod = $state<'annual' | 'quarter' | 'ttm'>('quarter');
 	let activeFinancialTab = $state<'income' | 'balance' | 'cashflow'>('income');
+
+	// Mobile view state
+	let mobileView = $state<'stats' | 'performance'>('stats');
+	let windowWidth = $state(768);
+	const isMobile = $derived(windowWidth < 768);
 
 	// Quote data - local state for proper reactivity
 	let quoteData = $state<{
@@ -161,6 +170,16 @@
 		netCashFlow?: number;
 	}>>([]);
 
+	// TTM financial data
+	let incomeTTM = $state<typeof incomeData>([]);
+	let balanceTTM = $state<typeof balanceData>([]);
+	let cashflowTTM = $state<typeof cashflowData>([]);
+
+	// Derived display data based on period selection
+	const displayIncomeData = $derived(incomePeriod === 'ttm' ? incomeTTM : incomeData);
+	const displayBalanceData = $derived(balancePeriod === 'ttm' ? balanceTTM : balanceData);
+	const displayCashflowData = $derived(cashflowPeriod === 'ttm' ? cashflowTTM : cashflowData);
+
 	// Institutional holders
 	let institutionalHolders = $state<Array<{
 		holder: string;
@@ -223,6 +242,39 @@
 		productSegments: Array<{ segment: string; revenue: number; year: number; quarter?: number }>;
 		geographicSegments: Array<{ segment: string; revenue: number; year: number }>;
 	}>({ productSegments: [], geographicSegments: [] });
+
+	// Financial Scores (Piotroski & Altman Z-Score)
+	let financialScore = $state<{
+		piotroskiScore: number | null;
+		altmanZScore: number | null;
+	} | null>(null);
+
+	// Shares Float data
+	let sharesFloat = $state<{
+		floatShares: number | null;
+		freeFloat: number | null;
+		outstandingShares: number | null;
+	} | null>(null);
+
+	// Insider trade statistics
+	let insiderStats = $state<{
+		totalBought: number;
+		totalSold: number;
+		buyCount: number;
+		sellCount: number;
+		periodStart: string | null;
+		periodEnd: string | null;
+	} | null>(null);
+
+	// Aftermarket (pre/post market) data
+	let aftermarketQuote = $state<{
+		preMarketPrice: number | null;
+		preMarketChange: number | null;
+		preMarketChangePercent: number | null;
+		postMarketPrice: number | null;
+		postMarketChange: number | null;
+		postMarketChangePercent: number | null;
+	} | null>(null);
 
 	// Congress trades for this ticker
 	let congressTrades = $state<Array<{
@@ -377,7 +429,11 @@
 				segmentsRes,
 				insiderRes,
 				dividendsRes,
-				dividendInfoRes
+				dividendInfoRes,
+				scoreRes,
+				floatRes,
+				insiderStatsRes,
+				aftermarketRes
 			] = await Promise.all([
 				api.getPoliticalTradesByTicker(symbol, 10),
 				api.getInstitutionalHolders(symbol),
@@ -387,7 +443,11 @@
 				api.getRevenueSegmentsV2(symbol),
 				api.getInsiderTradesByTicker(symbol, 20),
 				api.getDividends(symbol),
-				api.getDividendInfo(symbol)
+				api.getDividendInfo(symbol),
+				api.getFinancialScore(symbol),
+				api.getSharesFloat(symbol),
+				api.getInsiderTradeStats(symbol),
+				api.getAftermarketQuote(symbol)
 			]);
 
 			if (congressRes.success && congressRes.data) {
@@ -416,6 +476,18 @@
 			}
 			if (dividendInfoRes.success && dividendInfoRes.data) {
 				dividendInfo = dividendInfoRes.data;
+			}
+			if (scoreRes.success && scoreRes.data) {
+				financialScore = scoreRes.data;
+			}
+			if (floatRes.success && floatRes.data) {
+				sharesFloat = floatRes.data;
+			}
+			if (insiderStatsRes.success && insiderStatsRes.data) {
+				insiderStats = insiderStatsRes.data;
+			}
+			if (aftermarketRes.success && aftermarketRes.data) {
+				aftermarketQuote = aftermarketRes.data;
 			}
 		} catch (err) {
 			error = 'Failed to load stock data';
@@ -540,19 +612,65 @@
 		loadOHLC(period);
 	}
 
-	function handleIncomePeriodChange(period: 'annual' | 'quarter') {
+	async function handleIncomePeriodChange(period: 'annual' | 'quarter' | 'ttm') {
 		incomePeriod = period;
-		loadIncomeStatement(period);
+		if (period === 'ttm') {
+			await loadIncomeTTM();
+		} else {
+			loadIncomeStatement(period);
+		}
 	}
 
-	function handleBalancePeriodChange(period: 'annual' | 'quarter') {
+	async function handleBalancePeriodChange(period: 'annual' | 'quarter' | 'ttm') {
 		balancePeriod = period;
-		loadBalanceSheet(period);
+		if (period === 'ttm') {
+			await loadBalanceTTM();
+		} else {
+			loadBalanceSheet(period);
+		}
 	}
 
-	function handleCashflowPeriodChange(period: 'annual' | 'quarter') {
+	async function handleCashflowPeriodChange(period: 'annual' | 'quarter' | 'ttm') {
 		cashflowPeriod = period;
-		loadCashFlow(period);
+		if (period === 'ttm') {
+			await loadCashflowTTM();
+		} else {
+			loadCashFlow(period);
+		}
+	}
+
+	async function loadIncomeTTM() {
+		try {
+			const res = await api.getIncomeStatementTTM(symbol);
+			if (res.success && res.data) {
+				// Add date field for TTM data (use today's date)
+				incomeTTM = [{ ...res.data, date: new Date().toISOString().split('T')[0], period: 'TTM' }];
+			}
+		} catch (err) {
+			console.error('Failed to load income TTM:', err);
+		}
+	}
+
+	async function loadBalanceTTM() {
+		try {
+			const res = await api.getBalanceSheetTTM(symbol);
+			if (res.success && res.data) {
+				balanceTTM = [{ ...res.data, date: new Date().toISOString().split('T')[0], period: 'TTM' }];
+			}
+		} catch (err) {
+			console.error('Failed to load balance sheet TTM:', err);
+		}
+	}
+
+	async function loadCashflowTTM() {
+		try {
+			const res = await api.getCashFlowTTM(symbol);
+			if (res.success && res.data) {
+				cashflowTTM = [{ ...res.data, date: new Date().toISOString().split('T')[0], period: 'TTM' }];
+			}
+		} catch (err) {
+			console.error('Failed to load cash flow TTM:', err);
+		}
 	}
 
 	async function checkWatchlist() {
@@ -593,8 +711,16 @@
 		loadData();
 		checkWatchlist();
 
+		// Track window width for mobile detection
+		windowWidth = window.innerWidth;
+		const handleResize = () => {
+			windowWidth = window.innerWidth;
+		};
+		window.addEventListener('resize', handleResize);
+
 		return () => {
 			quotes.unsubscribe(symbol);
+			window.removeEventListener('resize', handleResize);
 		};
 	});
 
@@ -755,6 +881,27 @@
 								</span>
 							</span>
 						{/if}
+						{#if aftermarketQuote?.preMarketPrice || aftermarketQuote?.postMarketPrice}
+							<span class="aftermarket-quote">
+								{#if aftermarketQuote?.postMarketPrice}
+									<span class="aftermarket-label">After Hours:</span>
+									<span class="aftermarket-price">{formatCurrency(aftermarketQuote.postMarketPrice)}</span>
+									{#if aftermarketQuote.postMarketChangePercent !== null}
+										<span class={getPriceClass(aftermarketQuote.postMarketChangePercent)}>
+											{aftermarketQuote.postMarketChangePercent >= 0 ? '+' : ''}{formatPercent(aftermarketQuote.postMarketChangePercent)}
+										</span>
+									{/if}
+								{:else if aftermarketQuote?.preMarketPrice}
+									<span class="aftermarket-label">Pre-Market:</span>
+									<span class="aftermarket-price">{formatCurrency(aftermarketQuote.preMarketPrice)}</span>
+									{#if aftermarketQuote.preMarketChangePercent !== null}
+										<span class={getPriceClass(aftermarketQuote.preMarketChangePercent)}>
+											{aftermarketQuote.preMarketChangePercent >= 0 ? '+' : ''}{formatPercent(aftermarketQuote.preMarketChangePercent)}
+										</span>
+									{/if}
+								{/if}
+							</span>
+						{/if}
 					</div>
 				</div>
 			</div>
@@ -774,8 +921,10 @@
 		</div>
 	</header>
 
-	<!-- Main Content -->
-	<div class="main-content">
+	<!-- Desktop Layout -->
+	<div class="desktop-layout">
+		<!-- Main Content -->
+		<div class="main-content">
 		<!-- Left Column -->
 		<div class="left-column">
 			<!-- Chart Section -->
@@ -783,12 +932,16 @@
 				{#if loading || chartLoading}
 					<div class="chart-loading"></div>
 				{:else if priceChartData.length > 0}
-					<div class="chart-container">
-						<PriceChart data={priceChartData} height={400} color="#f59e0b" />
+					<div class="chart-wrapper-main">
+						<PriceChart data={priceChartData} height={320} />
 					</div>
 				{:else}
 					<div class="chart-empty">No historical data available</div>
 				{/if}
+			</section>
+
+			<!-- Technical Indicators -->
+			<section class="tech-indicators-section">
 				<TechnicalIndicators {symbol} />
 			</section>
 
@@ -807,10 +960,15 @@
 							class:active={incomePeriod === 'annual'}
 							onclick={() => handleIncomePeriodChange('annual')}
 						>Annually</button>
+						<button
+							class="toggle-btn ttm"
+							class:active={incomePeriod === 'ttm'}
+							onclick={() => handleIncomePeriodChange('ttm')}
+						>TTM</button>
 					</div>
 				</div>
 
-				{#if incomeData.length > 0}
+				{#if displayIncomeData.length > 0}
 					<div class="financial-table-wrapper">
 						<table class="financial-table">
 							<thead>
@@ -825,8 +983,8 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each incomeData as row, i (row.date)}
-									{@const prev = incomeData[i + 1]}
+								{#each displayIncomeData as row, i (row.date)}
+									{@const prev = displayIncomeData[i + 1]}
 									<tr>
 										<td>{formatPeriodLabel(row.date, row.period)}</td>
 										<td class={getChangeClass(row.revenue, prev?.revenue)}>
@@ -862,6 +1020,26 @@
 							</div>
 						</div>
 					{/if}
+					<div class="section-ai-button">
+						<AIExplainButton
+							ticker={symbol}
+							sectionType="income"
+							data={{
+								revenue: displayIncomeData[0].revenue,
+								netIncome: displayIncomeData[0].netIncome,
+								grossMargin: displayIncomeData[0].grossProfit && displayIncomeData[0].revenue
+									? ((displayIncomeData[0].grossProfit / displayIncomeData[0].revenue) * 100).toFixed(1)
+									: null,
+								operatingMargin: displayIncomeData[0].operatingIncome && displayIncomeData[0].revenue
+									? ((displayIncomeData[0].operatingIncome / displayIncomeData[0].revenue) * 100).toFixed(1)
+									: null,
+								netMargin: displayIncomeData[0].netProfitMargin
+									? (displayIncomeData[0].netProfitMargin * 100).toFixed(1)
+									: (displayIncomeData[0].netIncome / displayIncomeData[0].revenue * 100).toFixed(1)
+							}}
+							label="Explain These Numbers"
+						/>
+					</div>
 				{:else}
 					<p class="no-data">No income statement data available</p>
 				{/if}
@@ -874,10 +1052,11 @@
 					<div class="period-toggle">
 						<button class="toggle-btn" class:active={balancePeriod === 'quarter'} onclick={() => handleBalancePeriodChange('quarter')}>Quarterly</button>
 						<button class="toggle-btn" class:active={balancePeriod === 'annual'} onclick={() => handleBalancePeriodChange('annual')}>Annually</button>
+						<button class="toggle-btn ttm" class:active={balancePeriod === 'ttm'} onclick={() => handleBalancePeriodChange('ttm')}>TTM</button>
 					</div>
 				</div>
 
-				{#if balanceData.length > 0}
+				{#if displayBalanceData.length > 0}
 					<div class="financial-table-wrapper">
 						<table class="financial-table">
 							<thead>
@@ -890,8 +1069,8 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each balanceData as row, i (row.date)}
-									{@const prev = balanceData[i + 1]}
+								{#each displayBalanceData as row, i (row.date)}
+									{@const prev = displayBalanceData[i + 1]}
 									<tr>
 										<td>{formatPeriodLabel(row.date, row.period)}</td>
 										<td class={getChangeClass(row.cashAndCashEquivalents, prev?.cashAndCashEquivalents)}>
@@ -921,6 +1100,24 @@
 							</div>
 						</div>
 					{/if}
+					<div class="section-ai-button">
+						<AIExplainButton
+							ticker={symbol}
+							sectionType="balance"
+							data={{
+								totalAssets: displayBalanceData[0].totalAssets,
+								totalLiabilities: displayBalanceData[0].totalLiabilities,
+								totalEquity: displayBalanceData[0].totalEquity,
+								debtToEquity: displayBalanceData[0].totalLiabilities && displayBalanceData[0].totalEquity
+									? (displayBalanceData[0].totalLiabilities / displayBalanceData[0].totalEquity).toFixed(2)
+									: null,
+								currentRatio: displayBalanceData[0].totalAssets && displayBalanceData[0].totalLiabilities
+									? (displayBalanceData[0].totalAssets / displayBalanceData[0].totalLiabilities).toFixed(2)
+									: null
+							}}
+							label="Explain These Numbers"
+						/>
+					</div>
 				{:else}
 					<p class="no-data">No balance sheet data available</p>
 				{/if}
@@ -933,10 +1130,11 @@
 					<div class="period-toggle">
 						<button class="toggle-btn" class:active={cashflowPeriod === 'quarter'} onclick={() => handleCashflowPeriodChange('quarter')}>Quarterly</button>
 						<button class="toggle-btn" class:active={cashflowPeriod === 'annual'} onclick={() => handleCashflowPeriodChange('annual')}>Annually</button>
+						<button class="toggle-btn ttm" class:active={cashflowPeriod === 'ttm'} onclick={() => handleCashflowPeriodChange('ttm')}>TTM</button>
 					</div>
 				</div>
 
-				{#if cashflowData.length > 0}
+				{#if displayCashflowData.length > 0}
 					<div class="financial-table-wrapper">
 						<table class="financial-table">
 							<thead>
@@ -951,8 +1149,8 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each cashflowData as row, i (row.date)}
-									{@const prev = cashflowData[i + 1]}
+								{#each displayCashflowData as row, i (row.date)}
+									{@const prev = displayCashflowData[i + 1]}
 									<tr>
 										<td>{formatPeriodLabel(row.date, row.period)}</td>
 										<td class={getChangeClass(row.netIncome, prev?.netIncome)}>
@@ -988,6 +1186,19 @@
 							</div>
 						</div>
 					{/if}
+					<div class="section-ai-button">
+						<AIExplainButton
+							ticker={symbol}
+							sectionType="cashflow"
+							data={{
+								operatingCashFlow: displayCashflowData[0].operatingCashFlow,
+								investingCashFlow: displayCashflowData[0].investingCashFlow,
+								financingCashFlow: displayCashflowData[0].financingCashFlow,
+								freeCashFlow: displayCashflowData[0].freeCashFlow
+							}}
+							label="Explain These Numbers"
+						/>
+					</div>
 				{:else}
 					<p class="no-data">No cash flow data available</p>
 				{/if}
@@ -1063,9 +1274,27 @@
 							<td>Outstanding Shares</td>
 							<td>{quoteData?.sharesOutstanding ? formatCompact(quoteData.sharesOutstanding) : '--'}</td>
 						</tr>
+						{#if sharesFloat?.floatShares}
+							<tr>
+								<td>Float Shares</td>
+								<td>{formatCompact(sharesFloat.floatShares)}</td>
+							</tr>
+						{/if}
+						{#if sharesFloat?.freeFloat}
+							<tr>
+								<td>Free Float</td>
+								<td>{formatPercent(sharesFloat.freeFloat)}</td>
+							</tr>
+						{/if}
 					</tbody>
 				</table>
 			</section>
+
+			<!-- Financial Health Scores -->
+			<FinancialScores score={financialScore} />
+
+			<!-- Sector & Industry Info -->
+			<StockSectorInfo sector={profile?.sector ?? null} industry={profile?.industry ?? null} />
 
 			<!-- Sentiment Gauge -->
 			<section class="sentiment-section">
@@ -1123,12 +1352,6 @@
 			<section class="company-info-section">
 				<table class="info-table">
 					<tbody>
-						{#if profile?.industry}
-							<tr><td>Industry</td><td>{profile.industry}</td></tr>
-						{/if}
-						{#if profile?.sector}
-							<tr><td>Sector</td><td>{profile.sector}</td></tr>
-						{/if}
 						{#if profile?.ipoDate}
 							<tr><td>Went public</td><td>{new Date(profile.ipoDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td></tr>
 						{/if}
@@ -1200,6 +1423,19 @@
 							</table>
 						</div>
 					</div>
+					<div class="section-ai-button">
+						<AIExplainButton
+							ticker={symbol}
+							sectionType="ratings"
+							data={{
+								ratingScore: rating.ratingScore,
+								recommendation: rating.ratingRecommendation,
+								dcfValue: rating.ratingDetailsDCFScore,
+								currentPrice: quoteData?.price
+							}}
+							label="What Does This Mean?"
+						/>
+					</div>
 				</section>
 			{/if}
 
@@ -1212,7 +1448,20 @@
 			<!-- Analyst Grades -->
 			{#if analystGrades.length > 0}
 				<section class="analyst-section">
-					<h3>Most Recent Analyst Grades</h3>
+					<div class="section-header-with-action">
+						<h3>Most Recent Analyst Grades</h3>
+						<AIExplainButton
+							ticker={symbol}
+							sectionType="grades"
+							data={{
+								recentGrades: analystGrades.slice(0, 5).map(g => `${g.gradingCompany}: ${g.newGrade}`).join(', '),
+								consensus: rating?.ratingRecommendation || 'N/A',
+								upgrades: analystGrades.filter(g => g.newGrade === 'Buy' || g.newGrade === 'Strong Buy' || g.action === 'upgrade').length,
+								downgrades: analystGrades.filter(g => g.newGrade === 'Sell' || g.newGrade === 'Strong Sell' || g.action === 'downgrade').length
+							}}
+							label="Grade Trend"
+						/>
+					</div>
 					<div class="analyst-content">
 						<div class="analyst-list">
 							{#each analystGrades.slice(0, 10) as grade, i (grade.publishedDate && grade.gradingCompany ? `${grade.publishedDate}-${grade.gradingCompany}` : `grade-${i}`)}
@@ -1305,6 +1554,9 @@
 				</section>
 			{/if}
 
+			<!-- Insider Activity Statistics -->
+			<InsiderActivity stats={insiderStats} ticker={symbol} />
+
 			<!-- Congress Trades -->
 			{#if congressTrades.length > 0}
 				<section class="congress-section">
@@ -1351,6 +1603,19 @@
 							{/each}
 						</div>
 					</div>
+					<div class="section-ai-button">
+						<AIExplainButton
+							ticker={symbol}
+							sectionType="congress"
+							data={{
+								tradeCount: congressTrades.length,
+								buys: congressTrades.filter(t => t.transactionType === 'BUY').length,
+								sells: congressTrades.filter(t => t.transactionType === 'SELL').length,
+								traders: [...new Set(congressTrades.slice(0, 5).map(t => t.officialName))].join(', ')
+							}}
+							label="Explain Activity"
+						/>
+					</div>
 				</section>
 			{/if}
 
@@ -1383,7 +1648,7 @@
 									<td>{peerData?.price ? formatCurrency(peerData.price) : '--'}</td>
 									<td>{peerData?.marketCap ? formatCompact(peerData.marketCap) : '--'}</td>
 									<td>
-										<a href="/ticker/{peer}" class="compare-btn">Compare</a>
+										<a href="/compare?symbols={symbol},{peer}" class="compare-btn">Compare</a>
 									</td>
 								</tr>
 							{/each}
@@ -1393,6 +1658,468 @@
 			{/if}
 		</div>
 	</div>
+	</div>
+	<!-- End Desktop Layout -->
+
+	<!-- Mobile Views -->
+	<div class="mobile-view-toggle">
+		{#if mobileView === 'stats'}
+			<button class="view-toggle-btn" onclick={() => mobileView = 'performance'}>
+				<span>View Performance Data</span>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<path d="M5 12h14m-7-7 7 7-7 7"/>
+				</svg>
+			</button>
+		{:else}
+			<button class="view-toggle-btn" onclick={() => mobileView = 'stats'}>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<path d="M19 12H5m7-7-7 7 7 7"/>
+				</svg>
+				<span>View Company Stats</span>
+			</button>
+		{/if}
+	</div>
+
+	{#if mobileView === 'stats'}
+		<!-- Mobile Stats View -->
+		<div class="mobile-stats-view">
+			<!-- About Section with CEO Portrait -->
+			<section class="about-section">
+				<div class="about-header">
+					{#if ceo || profile?.ceo}
+						{@const ceoName = formatExecutiveName(ceo?.name || profile?.ceo)}
+						<div class="ceo-portrait-container">
+							{#if ceoPortrait}
+								<img
+									src={ceoPortrait}
+									alt={ceoName}
+									class="ceo-portrait"
+									onerror={(e) => { e.currentTarget.src = getAvatarFallback(ceoName || 'CEO'); }}
+								/>
+							{:else}
+								<img
+									src={getAvatarFallback(ceoName || 'CEO')}
+									alt={ceoName}
+									class="ceo-portrait"
+								/>
+							{/if}
+							<div class="ceo-label">
+								<span class="ceo-title">CEO</span>
+								<span class="ceo-name">{ceoName}</span>
+							</div>
+						</div>
+					{/if}
+					<div class="about-content">
+						<h3>About {profile?.name || symbol}</h3>
+						{#if profile?.website}
+							<a href={profile.website} target="_blank" rel="noopener" class="website-link">
+								{profile.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+							</a>
+						{/if}
+						{#if summarizedDescription}
+							<p class="description">{summarizedDescription}</p>
+						{/if}
+					</div>
+				</div>
+			</section>
+
+			<!-- Company Info -->
+			<section class="company-info-section">
+				<table class="info-table">
+					<tbody>
+						{#if profile?.ipoDate}
+							<tr><td>Went public</td><td>{new Date(profile.ipoDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td></tr>
+						{/if}
+						{#if profile?.employees}
+							<tr><td>Full time employees</td><td>{profile.employees.toLocaleString()}</td></tr>
+						{/if}
+					</tbody>
+				</table>
+			</section>
+
+			<!-- Sector & Industry Info -->
+			<StockSectorInfo sector={profile?.sector ?? null} industry={profile?.industry ?? null} />
+
+			<!-- Executive Compensation (if CEO data available) -->
+			{#if ceo && ceo.pay}
+				<section class="compensation-section">
+					<h3>Executive Compensation</h3>
+					<table class="info-table">
+						<tbody>
+							<tr><td>Total Compensation</td><td>{formatCurrency(ceo.pay)}</td></tr>
+							{#if ceo.titleSince}
+								<tr><td>Title Since</td><td>{ceo.titleSince}</td></tr>
+							{/if}
+						</tbody>
+					</table>
+				</section>
+			{/if}
+
+			<!-- Split Record -->
+			{#if splits.length > 0}
+				<section class="splits-section">
+					<h3>Split Record</h3>
+					<table class="splits-table">
+						<thead>
+							<tr>
+								<th>DATE</th>
+								<th>TYPE</th>
+								<th>RATIO</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each splits as split, i (split.date ?? `split-${i}`)}
+								<tr>
+									<td>{new Date(split.date).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>
+									<td class="split-type">Forward</td>
+									<td>{split.numerator}:{split.denominator}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</section>
+			{/if}
+
+			<!-- Dividend History -->
+			<section class="dividend-section">
+				<DividendHistory
+					{dividends}
+					{dividendInfo}
+					currentPrice={quoteData?.price ?? undefined}
+					ticker={symbol}
+				/>
+			</section>
+		</div>
+	{:else}
+		<!-- Mobile Performance View -->
+		<div class="mobile-performance-view">
+			<!-- Ticker Header -->
+			<div class="mobile-ticker-header">
+				<div class="mobile-header-row">
+					<img
+						src={getCompanyLogoUrl(symbol)}
+						alt={symbol}
+						class="stock-logo"
+						onerror={(e) => { e.currentTarget.style.display = 'none'; }}
+					/>
+					<div class="mobile-header-info">
+						<span class="ticker-symbol">{symbol}</span>
+						{#if profile?.name}
+							<span class="company-name">{profile.name}</span>
+						{/if}
+						{#if quoteData?.exchange}
+							<span class="exchange">{quoteData.exchange}</span>
+						{/if}
+					</div>
+				</div>
+				{#if quoteData}
+					<div class="mobile-price-display">
+						<span class="price-value">{formatCurrency(quoteData.price ?? 0)}</span>
+						<span class={getPriceClass(periodChange.changePercent)}>
+							{periodChange.changePercent >= 0 ? '+' : ''}{formatPercent(Math.abs(periodChange.changePercent))}
+							({periodChange.change >= 0 ? '+' : ''}{formatCurrency(periodChange.change, 'USD', 2)})
+						</span>
+					</div>
+				{/if}
+				<button
+					class="watchlist-btn"
+					class:in-watchlist={inWatchlist}
+					onclick={toggleWatchlist}
+					disabled={watchlistLoading}
+				>
+					{inWatchlist ? 'In Watchlist' : 'Add To Watchlist'}
+				</button>
+			</div>
+
+			<!-- Period Buttons -->
+			<div class="period-buttons">
+				{#each periods as period (period.value)}
+					<button
+						class="period-btn"
+						class:active={selectedPeriod === period.value}
+						onclick={() => handlePeriodChange(period.value)}
+					>
+						{period.label}
+					</button>
+				{/each}
+			</div>
+
+			<!-- Chart Section -->
+			<section class="chart-section mobile-chart-full-width">
+				{#if loading || chartLoading}
+					<div class="chart-loading"></div>
+				{:else if priceChartData.length > 0}
+					<div class="chart-wrapper-main">
+						<PriceChart data={priceChartData} height={320} />
+					</div>
+				{:else}
+					<div class="chart-empty">No historical data available</div>
+				{/if}
+			</section>
+
+			<!-- Key Stats -->
+			<section class="stats-section">
+				<table class="stats-table">
+					<tbody>
+						<tr>
+							<td>Market Cap</td>
+							<td>{quoteData?.marketCap ? formatCompact(quoteData.marketCap) : '--'}</td>
+						</tr>
+						<tr>
+							<td>52w High</td>
+							<td>{quoteData?.fiftyTwoWeekHigh ? formatCurrency(quoteData.fiftyTwoWeekHigh) : '--'}</td>
+						</tr>
+						<tr>
+							<td>52w Low</td>
+							<td>{quoteData?.fiftyTwoWeekLow ? formatCurrency(quoteData.fiftyTwoWeekLow) : '--'}</td>
+						</tr>
+						<tr>
+							<td>P/E</td>
+							<td>{quoteData?.peRatio?.toFixed(2) ?? '--'}</td>
+						</tr>
+						<tr>
+							<td>Volume</td>
+							<td>{quoteData?.volume ? formatCompact(quoteData.volume) : '--'}</td>
+						</tr>
+					</tbody>
+				</table>
+			</section>
+
+			<!-- Financial Statements Tabs -->
+			<section class="mobile-financials-section">
+				<div class="financials-tabs">
+					<button
+						class="financial-tab"
+						class:active={activeFinancialTab === 'income'}
+						onclick={() => activeFinancialTab = 'income'}
+					>Income</button>
+					<button
+						class="financial-tab"
+						class:active={activeFinancialTab === 'balance'}
+						onclick={() => activeFinancialTab = 'balance'}
+					>Balance</button>
+					<button
+						class="financial-tab"
+						class:active={activeFinancialTab === 'cashflow'}
+						onclick={() => activeFinancialTab = 'cashflow'}
+					>Cash Flow</button>
+				</div>
+
+				{#if activeFinancialTab === 'income' && displayIncomeData.length > 0}
+					<div class="mobile-financial-chart">
+						<RevenueChart data={incomeChartData} />
+					</div>
+					<table class="mobile-financial-table">
+						<thead>
+							<tr>
+								<th>Period</th>
+								<th>Revenue</th>
+								<th>Net Income</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each displayIncomeData.slice(0, 4) as row (row.date)}
+								<tr>
+									<td>{formatPeriodLabel(row.date, row.period)}</td>
+									<td>{formatCompact(row.revenue)}</td>
+									<td class={row.netIncome >= 0 ? 'positive' : 'negative'}>{formatCompact(row.netIncome)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				{:else if activeFinancialTab === 'balance' && displayBalanceData.length > 0}
+					<div class="mobile-financial-chart">
+						<BalanceSheetChart data={balanceChartData} />
+					</div>
+					<table class="mobile-financial-table">
+						<thead>
+							<tr>
+								<th>Period</th>
+								<th>Assets</th>
+								<th>Liabilities</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each displayBalanceData.slice(0, 4) as row (row.date)}
+								<tr>
+									<td>{formatPeriodLabel(row.date, row.period)}</td>
+									<td>{formatCompact(row.totalAssets)}</td>
+									<td>{formatCompact(row.totalLiabilities)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				{:else if activeFinancialTab === 'cashflow' && displayCashflowData.length > 0}
+					<div class="mobile-financial-chart">
+						<CashFlowChart data={cashflowChartData} />
+					</div>
+					<table class="mobile-financial-table">
+						<thead>
+							<tr>
+								<th>Period</th>
+								<th>Operating</th>
+								<th>Free CF</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each displayCashflowData.slice(0, 4) as row (row.date)}
+								<tr>
+									<td>{formatPeriodLabel(row.date, row.period)}</td>
+									<td class={row.operatingCashFlow >= 0 ? 'positive' : 'negative'}>{formatCompact(row.operatingCashFlow)}</td>
+									<td class={row.freeCashFlow >= 0 ? 'positive' : 'negative'}>{formatCompact(row.freeCashFlow)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				{:else}
+					<div class="no-data-message">No financial data available</div>
+				{/if}
+			</section>
+
+			<!-- Financial Health Scores -->
+			<FinancialScores score={financialScore} />
+
+			<!-- Sentiment Gauge -->
+			<section class="sentiment-section">
+				<h3>Market Sentiment</h3>
+				<SentimentGauge
+					ratingScore={rating?.ratingScore}
+					grades={analystGrades}
+					{priceTarget}
+					currentPrice={quoteData?.price}
+					{insiderTrades}
+				/>
+			</section>
+
+			<!-- Ratings Snapshot -->
+			{#if rating}
+				<section class="ratings-section">
+					<h3>Ratings Snapshot</h3>
+					<div class="mobile-ratings-grid">
+						<div class="mobile-rating-main">
+							<span class="rating-value-lg">{rating.rating}</span>
+							<span class="rating-score">Score: {rating.ratingScore}/5</span>
+						</div>
+						<table class="ratings-detail-table">
+							<tbody>
+								<tr><td>DCF</td><td>{rating.ratingDetailsDCFScore ?? '-'}</td></tr>
+								<tr><td>ROE</td><td>{rating.ratingDetailsROEScore ?? '-'}</td></tr>
+								<tr><td>ROA</td><td>{rating.ratingDetailsROAScore ?? '-'}</td></tr>
+								<tr><td>D/E</td><td>{rating.ratingDetailsDEScore ?? '-'}</td></tr>
+								<tr><td>P/E</td><td>{rating.ratingDetailsPEScore ?? '-'}</td></tr>
+							</tbody>
+						</table>
+					</div>
+				</section>
+			{/if}
+
+			<!-- Price Target -->
+			{#if priceTarget}
+				<section class="price-target-section">
+					<h3>Price Target</h3>
+					<table class="price-target-table">
+						<tbody>
+							<tr><td>Target High</td><td>{formatCurrency(priceTarget.targetHigh)}</td></tr>
+							<tr><td>Target Low</td><td>{formatCurrency(priceTarget.targetLow)}</td></tr>
+							<tr><td>Consensus</td><td>{formatCurrency(priceTarget.targetConsensus)}</td></tr>
+						</tbody>
+					</table>
+				</section>
+			{/if}
+
+			<!-- SWOT Analysis -->
+			<section class="swot-section">
+				<h3>SWOT Analysis</h3>
+				<SWOTAnalysis ticker={symbol} />
+			</section>
+
+			<!-- Insider Activity -->
+			<InsiderActivity stats={insiderStats} ticker={symbol} />
+
+			<!-- Congress Trades -->
+			{#if congressTrades.length > 0}
+				<section class="congress-section">
+					<h3>Latest Trades By Congress</h3>
+					<div class="congress-columns">
+						<div class="congress-column">
+							<h4>SENATE TRADES</h4>
+							{#each senateTrades.slice(0, 3) as trade, i (trade.id ?? `senate-${i}`)}
+								<a href="/political/member/{encodeURIComponent(trade.officialName)}" class="congress-trade-item">
+									<img
+										src={getCongressPortrait(trade.officialName, trade.title)}
+										alt={trade.officialName}
+										class="congress-portrait"
+										onerror={(e) => { e.currentTarget.src = getAvatarFallback(trade.officialName); }}
+									/>
+									<div class="congress-trade-info">
+										<span class="congress-name">{trade.officialName}</span>
+										<span class="congress-type {trade.transactionType === 'BUY' ? 'purchase' : 'sale'}">
+											{trade.transactionType === 'BUY' ? 'Purchased' : 'Sale'}
+										</span>
+									</div>
+								</a>
+							{/each}
+						</div>
+						<div class="congress-column">
+							<h4>HOUSE TRADES</h4>
+							{#each houseTrades.slice(0, 3) as trade, i (trade.id ?? `house-${i}`)}
+								<a href="/political/member/{encodeURIComponent(trade.officialName)}" class="congress-trade-item">
+									<img
+										src={getCongressPortrait(trade.officialName, trade.title)}
+										alt={trade.officialName}
+										class="congress-portrait"
+										onerror={(e) => { e.currentTarget.src = getAvatarFallback(trade.officialName); }}
+									/>
+									<div class="congress-trade-info">
+										<span class="congress-name">{trade.officialName}</span>
+										<span class="congress-type {trade.transactionType === 'BUY' ? 'purchase' : 'sale'}">
+											{trade.transactionType === 'BUY' ? 'Purchased' : 'Sale'}
+										</span>
+									</div>
+								</a>
+							{/each}
+						</div>
+					</div>
+				</section>
+			{/if}
+
+			<!-- Sector Peers -->
+			{#if peers.length > 0}
+				<section class="peers-section">
+					<h3>Sector Peers</h3>
+					<table class="peers-table">
+						<thead>
+							<tr>
+								<th>PEER</th>
+								<th>PRICE</th>
+								<th></th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each peers.slice(0, 5) as peer, i (peer ?? `peer-${i}`)}
+								{@const peerData = peerQuotes[peer]}
+								<tr>
+									<td class="peer-cell">
+										<img
+											src={getCompanyLogoUrl(peer)}
+											alt={peer}
+											class="peer-logo"
+											onerror={(e) => { e.currentTarget.style.display = 'none'; }}
+										/>
+										<span class="peer-symbol">{peer}</span>
+									</td>
+									<td>{peerData?.price ? formatCurrency(peerData.price) : '--'}</td>
+									<td>
+										<a href="/compare?symbols={symbol},{peer}" class="compare-btn">Compare</a>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</section>
+			{/if}
+		</div>
+	{/if}
 
 	{#if error}
 		<div class="error-banner">{error}</div>
@@ -1429,6 +2156,7 @@
 		width: 48px;
 		height: 48px;
 		object-fit: contain;
+		filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.3));
 	}
 
 	.header-info {
@@ -1450,20 +2178,41 @@
 	}
 
 	.watchlist-btn {
-		font-size: 0.75rem;
-		padding: 6px 12px;
-		border: 1px solid var(--color-border);
-		background: var(--color-paper);
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.5rem 0.875rem;
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: #fff;
+		background: #0a0a0a;
+		border: 1px solid #333;
+		border-radius: 6px;
 		cursor: pointer;
+		transition: all 0.15s ease;
 	}
 
-	.watchlist-btn:hover {
-		background: var(--color-newsprint-dark);
+	.watchlist-btn:hover:not(:disabled) {
+		background: #1a1a1a;
+		border-color: #444;
+	}
+
+	.watchlist-btn:disabled {
+		cursor: not-allowed;
+		opacity: 0.7;
 	}
 
 	.watchlist-btn.in-watchlist {
-		background: var(--color-ink);
-		color: var(--color-paper);
+		background: #10b981;
+		border-color: #10b981;
+	}
+
+	.watchlist-btn.in-watchlist:hover:not(:disabled) {
+		background: #059669;
+		border-color: #059669;
 	}
 
 	.company-row-info {
@@ -1499,46 +2248,67 @@
 		margin-left: 0.5rem;
 	}
 
+	.aftermarket-quote {
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+		margin-left: 1rem;
+		padding-left: 0.75rem;
+		border-left: 1px solid var(--color-border);
+	}
+
+	.aftermarket-label {
+		font-weight: 500;
+		color: var(--color-ink-light);
+		margin-right: 0.25rem;
+	}
+
+	.aftermarket-price {
+		font-weight: 600;
+		color: var(--color-ink);
+		margin-right: 0.25rem;
+	}
+
 	.period-buttons {
 		display: flex;
-		gap: 0;
-		border: 1px solid var(--color-border);
+		flex-wrap: wrap;
+		gap: 0.5rem;
 		width: fit-content;
 	}
 
 	.period-btn {
-		font-size: 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
 		font-weight: 600;
-		padding: 8px 14px;
-		border: none;
-		border-right: 1px solid var(--color-border);
+		padding: 0.5rem 0.875rem;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
 		background: var(--color-paper);
 		cursor: pointer;
-	}
-
-	.period-btn:last-child {
-		border-right: none;
+		transition: all 0.15s ease;
 	}
 
 	.period-btn:hover {
 		background: var(--color-newsprint-dark);
+		border-color: var(--color-ink-muted);
 	}
 
 	.period-btn.active {
 		background: var(--color-ink);
 		color: var(--color-paper);
+		border-color: var(--color-ink);
 	}
 
 	/* Main Content */
 	.main-content {
 		display: grid;
 		grid-template-columns: 1fr;
-		gap: 2rem;
+		gap: 1.5rem;
 	}
 
 	@media (min-width: 1024px) {
 		.main-content {
-			grid-template-columns: 1fr 380px;
+			grid-template-columns: 1fr 340px;
+			align-items: start;
 		}
 	}
 
@@ -1546,33 +2316,41 @@
 	.left-column {
 		display: flex;
 		flex-direction: column;
-		gap: 2rem;
+		gap: 1.5rem;
 	}
 
 	/* Chart Section */
 	.chart-section {
-		border: 1px solid var(--color-border);
-		padding: 1.5rem;
+		padding: 1rem;
 		background: var(--color-paper);
 	}
 
-	.chart-container {
-		height: 400px;
+	.chart-wrapper-main {
+		height: 320px;
+		width: 100%;
 		position: relative;
+		overflow: hidden;
 	}
 
 	.chart-loading {
-		height: 400px;
+		height: 320px;
 		background: var(--color-newsprint-dark);
 		animation: pulse 1.5s infinite;
 	}
 
 	.chart-empty {
-		height: 400px;
+		height: 320px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		color: var(--color-ink-muted);
+		font-family: var(--font-mono);
+		font-size: 0.875rem;
+	}
+
+	/* Technical Indicators Section */
+	.tech-indicators-section {
+		margin-top: -1rem;
 	}
 
 	/* Financial Sections */
@@ -1585,7 +2363,33 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.5rem;
 		margin-bottom: 1rem;
+	}
+
+	.section-header-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.section-header-with-action {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.section-header-with-action h3 {
+		margin: 0;
+	}
+
+	.section-ai-button {
+		margin-top: 1rem;
+		display: flex;
+		justify-content: flex-end;
 	}
 
 	.section-header-row h2 {
@@ -1660,7 +2464,6 @@
 	/* Financial Charts */
 	.financial-chart {
 		margin-top: 1.5rem;
-		border: 1px solid var(--color-border);
 		background: var(--color-paper);
 	}
 
@@ -1761,12 +2564,12 @@
 	.right-column {
 		display: flex;
 		flex-direction: column;
-		gap: 1.5rem;
+		gap: 1rem;
 	}
 
 	.right-column section {
 		border-bottom: 1px dotted var(--color-border);
-		padding-bottom: 1.5rem;
+		padding-bottom: 1rem;
 	}
 
 	.right-column h3 {
@@ -1797,9 +2600,7 @@
 
 	/* About Section with CEO Portrait */
 	.about-section {
-		padding: 1rem;
-		border: 1px solid var(--color-border);
-		background: var(--color-paper);
+		padding: 1rem 0;
 		margin-bottom: 1rem;
 	}
 
@@ -1886,27 +2687,6 @@
 		color: inherit;
 		width: fit-content;
 		margin-top: 0.5rem;
-	}
-
-	.compensation-section h4 {
-		font-size: 0.75rem;
-		font-weight: 700;
-		margin: 1rem 0 0.5rem 0;
-	}
-
-	.compensation-table {
-		width: 100%;
-		font-size: 0.75rem;
-	}
-
-	.compensation-table td {
-		padding: 0.375rem 0;
-		border-bottom: 1px dotted var(--color-border);
-	}
-
-	.compensation-table td:last-child {
-		text-align: right;
-		font-weight: 600;
 	}
 
 	/* Info Table */
@@ -2242,6 +3022,7 @@
 		width: 20px;
 		height: 20px;
 		object-fit: contain;
+		filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.3));
 	}
 
 	.peer-symbol {
@@ -2273,6 +3054,300 @@
 	@keyframes pulse {
 		0%, 100% { opacity: 1; }
 		50% { opacity: 0.5; }
+	}
+
+	/* Mobile View Toggle System */
+	@keyframes subtle-pulse {
+		0%, 100% {
+			transform: scale(1);
+			opacity: 1;
+		}
+		50% {
+			transform: scale(1.01);
+			opacity: 0.95;
+		}
+	}
+
+	@keyframes arrow-bounce {
+		0%, 100% { transform: translateX(0); }
+		50% { transform: translateX(3px); }
+	}
+
+	.mobile-view-toggle {
+		position: sticky;
+		top: 0;
+		z-index: 100;
+		padding: 0.5rem 0.75rem;
+		background: var(--color-newsprint);
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.view-toggle-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		width: auto;
+		padding: 0.5rem 0.875rem;
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #fff;
+		background: #0a0a0a;
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+		transition: all 0.15s ease;
+	}
+
+	.view-toggle-btn span {
+		animation: text-pulse 2s ease-in-out infinite;
+	}
+
+	@keyframes text-pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.6; }
+	}
+
+	.view-toggle-btn:hover {
+		background: #1a1a1a;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+	}
+
+	.view-toggle-btn:active {
+		transform: scale(0.98);
+	}
+
+	.view-toggle-btn svg {
+		width: 1rem;
+		height: 1rem;
+		animation: arrow-bounce 1.5s ease-in-out infinite;
+	}
+
+	.mobile-stats-view,
+	.mobile-performance-view {
+		padding: 0 0.5rem 1rem;
+	}
+
+	.mobile-chart-full-width {
+		margin-left: -0.5rem;
+		margin-right: -0.5rem;
+		padding: 0;
+	}
+
+	/* Mobile Section Spacing */
+	.mobile-performance-view section,
+	.mobile-stats-view section {
+		margin-bottom: 2rem;
+		padding-top: 1rem;
+	}
+
+	.mobile-performance-view section h3,
+	.mobile-stats-view section h3 {
+		margin-bottom: 1rem;
+		padding-bottom: 0.5rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	/* Mobile Ticker Header */
+	.mobile-ticker-header {
+		padding: 0.75rem 0;
+		margin-bottom: 1rem;
+	}
+
+	.mobile-header-row {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.mobile-header-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.mobile-header-info .ticker-symbol {
+		font-size: 1.25rem;
+		font-weight: 700;
+	}
+
+	.mobile-header-info .company-name {
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+	}
+
+	.mobile-header-info .exchange {
+		font-size: 0.625rem;
+		color: var(--color-ink-muted);
+		text-transform: uppercase;
+	}
+
+	.mobile-price-display {
+		margin-bottom: 0.75rem;
+	}
+
+	.mobile-price-display .price-value {
+		font-size: 1.5rem;
+		font-weight: 700;
+		display: block;
+		margin-bottom: 0.25rem;
+	}
+
+	.mobile-price-display span {
+		font-size: 0.875rem;
+	}
+
+	/* Compensation Section */
+	.compensation-section {
+		padding: 0;
+		margin-bottom: 1rem;
+	}
+
+	.compensation-section h3 {
+		font-size: 0.75rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin: 0 0 0.5rem 0;
+		padding-bottom: 0.5rem;
+		border-bottom: 1px dotted var(--color-border);
+	}
+
+	/* Mobile Ratings Grid */
+	.mobile-ratings-grid {
+		display: flex;
+		gap: 1rem;
+		align-items: flex-start;
+	}
+
+	.mobile-rating-main {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 0.5rem 1rem;
+		border-right: 1px solid var(--color-border);
+	}
+
+	.rating-value-lg {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: var(--color-ink);
+	}
+
+	.rating-score {
+		font-size: 0.625rem;
+		color: var(--color-ink-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	/* Mobile Financials Section */
+	.mobile-financials-section {
+		margin-bottom: 1rem;
+	}
+
+	.financials-tabs {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 1.25rem;
+		margin-top: 1.5rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.financial-tab {
+		padding: 0.625rem 0.5rem;
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		background: transparent;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		cursor: pointer;
+		color: var(--color-ink-muted);
+		transition: all 0.15s ease;
+	}
+
+	.financial-tab:hover {
+		background: var(--color-newsprint-dark);
+		color: var(--color-ink);
+	}
+
+	.financial-tab.active {
+		background: var(--color-ink);
+		color: var(--color-paper);
+		border-color: var(--color-ink);
+	}
+
+	.mobile-financial-chart {
+		margin-bottom: 1.5rem;
+		height: 180px;
+	}
+
+	.mobile-financial-table {
+		width: 100%;
+		font-size: 0.75rem;
+		border-collapse: collapse;
+		margin-top: 0.5rem;
+	}
+
+	.mobile-financial-table th {
+		text-align: left;
+		font-size: 0.625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-ink-muted);
+		padding: 0.75rem 0;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.mobile-financial-table td {
+		padding: 0.75rem 0;
+		border-bottom: 1px dotted var(--color-border);
+	}
+
+	.mobile-financial-table td:last-child,
+	.mobile-financial-table th:last-child {
+		text-align: right;
+	}
+
+	.mobile-financial-table .positive {
+		color: var(--color-gain);
+	}
+
+	.mobile-financial-table .negative {
+		color: var(--color-loss);
+	}
+
+	.no-data-message {
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+		text-align: center;
+		padding: 1.5rem;
+	}
+
+	/* Hide mobile elements on desktop */
+	@media (min-width: 768px) {
+		.mobile-view-toggle,
+		.mobile-stats-view,
+		.mobile-performance-view {
+			display: none !important;
+		}
+	}
+
+	/* Hide desktop layout on mobile */
+	@media (max-width: 767px) {
+		.desktop-layout,
+		.ticker-header {
+			display: none !important;
+		}
 	}
 
 	/* Mobile */

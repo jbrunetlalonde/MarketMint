@@ -34,6 +34,7 @@ export const api = {
 	getHistory: quotesApi.getHistory,
 	getMovers: quotesApi.getMovers,
 	getSectorPerformance: quotesApi.getSectorPerformance,
+	getIndustryPerformance: quotesApi.getIndustryPerformance,
 	getMarketStatus: quotesApi.getMarketStatus,
 
 	// Watchlist
@@ -70,6 +71,17 @@ export const api = {
 	getHolders: financialsApi.getHolders,
 	getETFHoldings: financialsApi.getETFHoldings,
 	getPressReleases: financialsApi.getPressReleases,
+	getDividendInfo: financialsApi.getDividendInfo,
+	getDetailedGrades: financialsApi.getDetailedGrades,
+	getPriceTargetSummary: financialsApi.getPriceTargetSummary,
+	// FMP Starter Pack Expansion
+	getFinancialScore: financialsApi.getFinancialScore,
+	getSharesFloat: financialsApi.getSharesFloat,
+	getInsiderTradeStats: financialsApi.getInsiderStats,
+	getAftermarketQuote: financialsApi.getAftermarketQuote,
+	getIncomeStatementTTM: financialsApi.getIncomeStatementTTM,
+	getBalanceSheetTTM: financialsApi.getBalanceSheetTTM,
+	getCashFlowTTM: financialsApi.getCashFlowTTM,
 
 	// News
 	getNews: newsApi.getNews,

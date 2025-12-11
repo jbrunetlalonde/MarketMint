@@ -419,5 +419,96 @@ export const financialsApi = {
 			frequency: string | null;
 			lastDividendDate: string | null;
 			lastDividendAmount: number | null;
-		} | null>(`/api/financials/${ticker}/dividend-info`, { token })
+		} | null>(`/api/financials/${ticker}/dividend-info`, { token }),
+
+	// FMP Starter Pack Expansion
+	getFinancialScore: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			piotroskiScore: number | null;
+			altmanZScore: number | null;
+			workingCapital: number | null;
+			totalAssets: number | null;
+			retainedEarnings: number | null;
+			ebit: number | null;
+			marketCap: number | null;
+			totalLiabilities: number | null;
+			revenue: number | null;
+		} | null>(`/api/financials/${ticker}/score`, { token }),
+
+	getSharesFloat: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			floatShares: number | null;
+			outstandingShares: number | null;
+			freeFloat: number | null;
+			date: string | null;
+		} | null>(`/api/financials/${ticker}/float`, { token }),
+
+	getInsiderStats: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			totalBought: number;
+			totalSold: number;
+			buyCount: number;
+			sellCount: number;
+			averageBuyPrice: number | null;
+			averageSellPrice: number | null;
+			periodStart: string | null;
+			periodEnd: string | null;
+		} | null>(`/api/financials/${ticker}/insider-stats`, { token }),
+
+	getAftermarketQuote: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			preMarketPrice: number | null;
+			preMarketChange: number | null;
+			preMarketChangePercent: number | null;
+			postMarketPrice: number | null;
+			postMarketChange: number | null;
+			postMarketChangePercent: number | null;
+			timestamp: string | null;
+		} | null>(`/api/financials/${ticker}/aftermarket`, { token }),
+
+	getIncomeStatementTTM: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			period: string;
+			revenue: number;
+			costOfRevenue: number;
+			grossProfit: number;
+			operatingExpenses: number;
+			operatingIncome: number;
+			netIncome: number;
+			eps: number;
+			epsDiluted: number;
+			ebitda: number;
+		} | null>(`/api/financials/${ticker}/income-ttm`, { token }),
+
+	getBalanceSheetTTM: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			period: string;
+			cashAndCashEquivalents: number;
+			shortTermInvestments: number;
+			totalCurrentAssets: number;
+			totalAssets: number;
+			totalCurrentLiabilities: number;
+			totalLiabilities: number;
+			totalEquity: number;
+			totalDebt: number;
+			netDebt: number;
+		} | null>(`/api/financials/${ticker}/balance-ttm`, { token }),
+
+	getCashFlowTTM: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			period: string;
+			netIncome: number;
+			operatingCashFlow: number;
+			investingCashFlow: number;
+			financingCashFlow: number;
+			freeCashFlow: number;
+			capitalExpenditure: number;
+		} | null>(`/api/financials/${ticker}/cashflow-ttm`, { token })
 };

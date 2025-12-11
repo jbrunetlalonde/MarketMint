@@ -65,15 +65,15 @@
 
 <style>
 	.market-status {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--color-newsprint);
-		border: 1px solid var(--color-border);
+		gap: 0.75rem;
+		padding: 0.5rem 1rem;
+		background: var(--color-ink);
+		border-radius: 9999px;
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
+		font-size: 0.6875rem;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 	}
 
 	.status-indicator {
@@ -90,29 +90,50 @@
 	}
 
 	.status-indicator.open .status-dot {
-		background: var(--color-gain);
-		box-shadow: 0 0 6px var(--color-gain);
+		background: #4ade80;
+		box-shadow: 0 0 8px #4ade80;
+		animation: pulse-glow 2s ease-in-out infinite;
 	}
 
 	.status-indicator.closed .status-dot {
-		background: var(--color-loss);
+		background: #f87171;
+	}
+
+	@keyframes pulse-glow {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.6; }
 	}
 
 	.status-text {
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.03em;
+		letter-spacing: 0.05em;
+		color: var(--color-paper);
 	}
 
 	.status-indicator.open .status-text {
-		color: var(--color-gain);
+		color: #4ade80;
 	}
 
 	.status-indicator.closed .status-text {
-		color: var(--color-ink-muted);
+		color: #f87171;
 	}
 
 	.current-time {
-		color: var(--color-ink-muted);
+		color: var(--color-paper);
+		opacity: 0.7;
+		padding-left: 0.5rem;
+		border-left: 1px solid rgba(255, 255, 255, 0.2);
+	}
+
+	/* Dark mode adjustments */
+	[data-theme="dark"] .market-status {
+		background: var(--color-newsprint-dark);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+	}
+
+	[data-theme="dark"] .status-text,
+	[data-theme="dark"] .current-time {
+		color: var(--color-ink);
 	}
 </style>

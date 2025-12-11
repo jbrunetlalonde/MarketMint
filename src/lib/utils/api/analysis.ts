@@ -21,6 +21,16 @@ interface AnalysisStatus {
 	available: boolean;
 }
 
+export type SectionType = 'cashflow' | 'income' | 'balance' | 'grades' | 'ratings' | 'insider' | 'congress';
+
+interface SectionExplanation {
+	ticker: string;
+	sectionType: SectionType;
+	explanation: string;
+	cached: boolean;
+	generatedAt: string;
+}
+
 export const analysisApi = {
 	/**
 	 * Get SWOT analysis for a ticker
@@ -53,6 +63,16 @@ export const analysisApi = {
 	 */
 	getStatus: () => {
 		return request<AnalysisStatus>('/api/analysis/status');
+	},
+
+	/**
+	 * Get AI explanation for a financial section
+	 */
+	explainSection: (ticker: string, sectionType: SectionType, data: Record<string, unknown>) => {
+		return request<SectionExplanation>(`/api/analysis/${ticker.toUpperCase()}/explain-section`, {
+			method: 'POST',
+			body: JSON.stringify({ sectionType, data })
+		});
 	}
 };
 

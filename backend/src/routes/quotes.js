@@ -30,6 +30,29 @@ router.get('/sector-performance', async (req, res, next) => {
 });
 
 /**
+ * GET /api/quotes/industry-performance
+ * Get industry performance data from FMP
+ * IMPORTANT: This route must be before /:ticker to avoid matching as a ticker
+ */
+router.get('/industry-performance', async (req, res, next) => {
+  try {
+    const data = await fmp.getIndustryPerformance();
+    res.json({
+      success: true,
+      data,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    logger.error('Industry performance fetch failed', { error: err.message });
+    res.json({
+      success: true,
+      data: [],
+      error: { code: 'FMP_ERROR', message: err.message }
+    });
+  }
+});
+
+/**
  * GET /api/quotes/movers
  * Get market movers: top gainers, losers, and most active stocks from FMP
  * IMPORTANT: This route must be before /:ticker to avoid matching "movers" as a ticker

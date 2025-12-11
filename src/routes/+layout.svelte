@@ -5,7 +5,6 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import { themeStore } from '$lib/stores/theme.svelte';
 	import api from '$lib/utils/api';
-	import MastheadHeader from '$lib/components/MastheadHeader.svelte';
 	import NavBar from '$lib/components/NavBar.svelte';
 	import Footer from '$lib/components/Footer.svelte';
 
@@ -40,13 +39,6 @@
 		fetchUnreadCount();
 		const interval = setInterval(fetchUnreadCount, 60000);
 		return () => clearInterval(interval);
-	});
-
-	const currentDate = new Date().toLocaleDateString('en-US', {
-		weekday: 'long',
-		year: 'numeric',
-		month: 'long',
-		day: 'numeric'
 	});
 
 	const navLinks = [
@@ -85,8 +77,7 @@
 			</a>
 		</header>
 	{:else}
-		<!-- Internal Pages Header - Full Navigation -->
-		<MastheadHeader {currentDate} />
+		<!-- Internal Pages Header - Consolidated Navigation -->
 		<NavBar
 			links={navLinks}
 			currentPath={$page.url.pathname}

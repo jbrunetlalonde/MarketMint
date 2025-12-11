@@ -93,51 +93,38 @@
 	{#if loading}
 		<div class="loading-state">
 			<div class="skeleton-row"></div>
-			<div class="skeleton-row"></div>
 		</div>
 	{:else if error}
 		<p class="error-text">{error}</p>
 	{:else if data?.latest}
 		{@const trend = getTrendSignal(data.latest.price, data.latest.sma20, data.latest.sma50)}
-		<div class="indicators-grid">
-			<!-- Trend Signal -->
-			<div class="indicator-card signal-card">
-				<span class="indicator-label">Trend</span>
-				<span class="indicator-value {trend.class}">{trend.label}</span>
-			</div>
-
-			<!-- RSI -->
-			<div class="indicator-card">
-				<span class="indicator-label">RSI (14)</span>
-				<div class="rsi-display">
-					<span class="indicator-value {getRsiClass(data.latest.rsi)}">{formatValue(data.latest.rsi)}</span>
-					{#if data.latest.rsi != null}
-						<span class="rsi-badge {getRsiClass(data.latest.rsi)}">{getRsiLabel(data.latest.rsi)}</span>
-					{/if}
-				</div>
-			</div>
-
-			<!-- Moving Averages -->
-			<div class="indicator-card">
-				<span class="indicator-label">SMA (20)</span>
-				<span class="indicator-value">${formatValue(data.latest.sma20)}</span>
-			</div>
-
-			<div class="indicator-card">
-				<span class="indicator-label">SMA (50)</span>
-				<span class="indicator-value">${formatValue(data.latest.sma50)}</span>
-			</div>
-
-			<div class="indicator-card">
-				<span class="indicator-label">EMA (12)</span>
-				<span class="indicator-value">${formatValue(data.latest.ema12)}</span>
-			</div>
-
-			<div class="indicator-card">
-				<span class="indicator-label">EMA (26)</span>
-				<span class="indicator-value">${formatValue(data.latest.ema26)}</span>
-			</div>
-		</div>
+		<table class="indicators-table">
+			<thead>
+				<tr>
+					<th>Trend</th>
+					<th>RSI (14)</th>
+					<th>SMA (20)</th>
+					<th>SMA (50)</th>
+					<th>EMA (12)</th>
+					<th>EMA (26)</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+					<td class={trend.class}>{trend.label}</td>
+					<td>
+						<span class={getRsiClass(data.latest.rsi)}>{formatValue(data.latest.rsi)}</span>
+						{#if data.latest.rsi != null}
+							<span class="rsi-badge {getRsiClass(data.latest.rsi)}">{getRsiLabel(data.latest.rsi)}</span>
+						{/if}
+					</td>
+					<td>${formatValue(data.latest.sma20)}</td>
+					<td>${formatValue(data.latest.sma50)}</td>
+					<td>${formatValue(data.latest.ema12)}</td>
+					<td>${formatValue(data.latest.ema26)}</td>
+				</tr>
+			</tbody>
+		</table>
 	{:else}
 		<p class="no-data">No technical data available</p>
 	{/if}
@@ -145,19 +132,16 @@
 
 <style>
 	.tech-indicators {
-		margin-top: 1rem;
+		margin-top: 0;
 	}
 
 	.loading-state {
-		display: flex;
-		gap: 1rem;
+		padding: 1rem 0;
 	}
 
 	.skeleton-row {
-		flex: 1;
 		height: 3rem;
 		background: var(--color-newsprint-dark);
-		border-radius: 4px;
 		animation: pulse 1.5s infinite;
 	}
 
@@ -178,74 +162,72 @@
 		color: var(--color-loss);
 	}
 
-	.indicators-grid {
-		display: grid;
-		grid-template-columns: repeat(6, 1fr);
-		gap: 0.75rem;
-	}
-
-	.indicator-card {
-		background: var(--color-paper);
-		border: 1px solid var(--color-border);
-		padding: 0.75rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.signal-card {
-		background: var(--color-newsprint);
-	}
-
-	.indicator-label {
+	.indicators-table {
+		width: 100%;
+		border-collapse: collapse;
 		font-family: var(--font-mono);
+		border: 1px solid var(--color-border);
+	}
+
+	.indicators-table th {
 		font-size: 0.625rem;
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.03em;
 		color: var(--color-ink-muted);
+		padding: 0.625rem 0.75rem;
+		text-align: left;
+		border-bottom: 1px solid var(--color-border);
+		border-right: 1px solid var(--color-border);
+		background: var(--color-newsprint);
 	}
 
-	.indicator-value {
-		font-family: var(--font-mono);
+	.indicators-table th:last-child {
+		border-right: none;
+	}
+
+	.indicators-table td {
 		font-size: 0.875rem;
-		font-weight: 700;
+		font-weight: 600;
+		padding: 0.75rem;
+		text-align: left;
+		border-right: 1px solid var(--color-border);
 		color: var(--color-ink);
 	}
 
-	.indicator-value.bullish {
+	.indicators-table td:last-child {
+		border-right: none;
+	}
+
+	.indicators-table td.bullish {
 		color: var(--color-gain);
+		font-weight: 700;
 	}
 
-	.indicator-value.bearish {
+	.indicators-table td.bearish {
 		color: var(--color-loss);
+		font-weight: 700;
 	}
 
-	.indicator-value.neutral {
+	.indicators-table td.neutral {
 		color: var(--color-ink-muted);
 	}
 
-	.indicator-value.overbought {
+	.overbought {
 		color: var(--color-loss);
 	}
 
-	.indicator-value.oversold {
+	.oversold {
 		color: var(--color-gain);
 	}
 
-	.rsi-display {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
 	.rsi-badge {
-		font-family: var(--font-mono);
 		font-size: 0.5rem;
 		font-weight: 600;
 		text-transform: uppercase;
 		padding: 0.125rem 0.375rem;
 		border-radius: 2px;
+		margin-left: 0.5rem;
 		background: var(--color-newsprint-dark);
 		color: var(--color-ink-muted);
 	}
@@ -260,15 +242,22 @@
 		color: var(--color-gain);
 	}
 
-	@media (max-width: 900px) {
-		.indicators-grid {
-			grid-template-columns: repeat(3, 1fr);
-		}
+	.rsi-badge.neutral {
+		background: var(--color-newsprint-dark);
+		color: var(--color-ink-muted);
 	}
 
-	@media (max-width: 500px) {
-		.indicators-grid {
-			grid-template-columns: repeat(2, 1fr);
+	@media (max-width: 768px) {
+		.indicators-table {
+			display: block;
+			overflow-x: auto;
+		}
+
+		.indicators-table th,
+		.indicators-table td {
+			white-space: nowrap;
+			padding: 0.5rem;
+			font-size: 0.75rem;
 		}
 	}
 </style>
