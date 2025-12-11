@@ -12,6 +12,7 @@
     "sync:portraits": "node scripts/sync-portraits-to-db.js"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "@sendgrid/mail": "^8.1.6",
     "@sentry/node": "^10.29.0",
     "axios": "^1.7.7",
@@ -21,6 +22,7 @@
     "express": "^4.21.0",
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.0.0",
+    "jsdom": "^27.3.0",
     "jsonwebtoken": "^9.0.2",
     "lru-cache": "^11.2.4",
     "node-cron": "^4.2.1",

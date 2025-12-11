@@ -5,9 +5,38 @@
 		publishedAt: string;
 		url: string;
 		sentiment?: string | null;
+		ticker?: string | null;
+		useInternalReader?: boolean;
 	}
 
-	let { title, source, publishedAt, url, sentiment }: Props = $props();
+	let { title, source, publishedAt, url, sentiment, ticker, useInternalReader = true }: Props = $props();
+
+	// Video URL patterns
+	const VIDEO_PATTERNS = [
+		/youtube\.com\/watch/i,
+		/youtube\.com\/shorts\//i,
+		/youtu\.be\//i,
+		/vimeo\.com\/\d+/i,
+		/dailymotion\.com\/video/i,
+		/twitch\.tv\//i,
+		/tiktok\.com\//i,
+		/cnbc\.com\/video/i,
+		/bloomberg\.com\/news\/videos/i,
+		/reuters\.com\/video/i,
+		/foxbusiness\.com\/video/i,
+		/foxnews\.com\/video/i,
+		/cnn\.com\/videos/i,
+		/msnbc\.com\/.*\/watch\//i,
+		/yahoo\.com\/.*\/video/i,
+		/finance\.yahoo\.com\/video/i,
+		/benzinga\.com\/.*video/i,
+		/marketwatch\.com\/video/i,
+		/podcasts\.apple\.com/i,
+		/spotify\.com\/episode/i,
+		/anchor\.fm/i
+	];
+
+	const isVideo = $derived(VIDEO_PATTERNS.some((pattern) => pattern.test(url)));
 
 	function formatNewsTime(dateStr: string): string {
 		if (!dateStr) return '';
@@ -23,12 +52,33 @@
 		if (diffHours < 48) return 'Yesterday';
 		return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 	}
+
+	function getReaderUrl(): string {
+		const params = new URLSearchParams({ url });
+		if (ticker) params.append('ticker', ticker);
+		if (title) params.append('title', title);
+		return `/news/article?${params.toString()}`;
+	}
+
+	// Videos always open externally
+	const href = $derived(isVideo ? url : (useInternalReader ? getReaderUrl() : url));
+	const isExternal = $derived(isVideo || !useInternalReader);
 </script>
 
-<a href={url} target="_blank" rel="noopener noreferrer" class="news-card">
-	{#if sentiment}
-		<span class="badge">{sentiment}</span>
-	{/if}
+<a
+	{href}
+	target={isExternal ? '_blank' : undefined}
+	rel={isExternal ? 'noopener noreferrer' : undefined}
+	class="news-card"
+>
+	<div class="badge-row">
+		{#if isVideo}
+			<span class="badge video-badge">VIDEO</span>
+		{/if}
+		{#if sentiment}
+			<span class="badge">{sentiment}</span>
+		{/if}
+	</div>
 	<h3 class="news-title">{title}</h3>
 	<p class="byline">
 		{source || 'News'}
@@ -70,5 +120,20 @@
 		font-size: 0.75rem;
 		color: var(--color-ink-muted);
 		margin: 0;
+	}
+
+	.badge-row {
+		display: flex;
+		gap: 0.375rem;
+		flex-wrap: wrap;
+	}
+
+	.badge-row:empty {
+		display: none;
+	}
+
+	.video-badge {
+		background: var(--color-ink);
+		color: var(--color-paper);
 	}
 </style>

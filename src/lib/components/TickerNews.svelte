@@ -18,9 +18,39 @@
 		loading?: boolean;
 		limit?: number;
 		ticker?: string;
+		useInternalReader?: boolean;
 	}
 
-	let { news, loading = false, limit = 5, ticker }: Props = $props();
+	let { news, loading = false, limit = 5, ticker, useInternalReader = true }: Props = $props();
+
+	// Video URL patterns
+	const VIDEO_PATTERNS = [
+		/youtube\.com\/watch/i,
+		/youtube\.com\/shorts\//i,
+		/youtu\.be\//i,
+		/vimeo\.com\/\d+/i,
+		/dailymotion\.com\/video/i,
+		/twitch\.tv\//i,
+		/tiktok\.com\//i,
+		/cnbc\.com\/video/i,
+		/bloomberg\.com\/news\/videos/i,
+		/reuters\.com\/video/i,
+		/foxbusiness\.com\/video/i,
+		/foxnews\.com\/video/i,
+		/cnn\.com\/videos/i,
+		/msnbc\.com\/.*\/watch\//i,
+		/yahoo\.com\/.*\/video/i,
+		/finance\.yahoo\.com\/video/i,
+		/benzinga\.com\/.*video/i,
+		/marketwatch\.com\/video/i,
+		/podcasts\.apple\.com/i,
+		/spotify\.com\/episode/i,
+		/anchor\.fm/i
+	];
+
+	function isVideoUrl(url: string): boolean {
+		return VIDEO_PATTERNS.some((pattern) => pattern.test(url));
+	}
 
 	const displayNews = $derived(news.slice(0, limit));
 
@@ -34,6 +64,25 @@
 		if (!text) return '';
 		if (text.length <= maxLength) return text;
 		return text.slice(0, maxLength).trim() + '...';
+	}
+
+	function getReaderUrl(item: NewsItem): string {
+		const params = new URLSearchParams({ url: item.url });
+		if (ticker) params.append('ticker', ticker);
+		if (item.title) params.append('title', item.title);
+		return `/news/article?${params.toString()}`;
+	}
+
+	function getNewsUrl(item: NewsItem): { href: string; external: boolean } {
+		// Videos always open externally
+		if (isVideoUrl(item.url)) {
+			return { href: item.url, external: true };
+		}
+		// Regular articles use internal reader if enabled
+		if (useInternalReader) {
+			return { href: getReaderUrl(item), external: false };
+		}
+		return { href: item.url, external: true };
 	}
 </script>
 
@@ -63,10 +112,24 @@
 	{:else}
 		<div class="news-list">
 			{#each displayNews as item (item.url)}
-				<a href={item.url} target="_blank" rel="noopener noreferrer" class="news-item">
+				{@const newsUrl = getNewsUrl(item)}
+				{@const isVideo = isVideoUrl(item.url)}
+				<a
+					href={newsUrl.href}
+					target={newsUrl.external ? '_blank' : undefined}
+					rel={newsUrl.external ? 'noopener noreferrer' : undefined}
+					class="news-item"
+				>
 					{#if item.image}
 						<div class="news-image">
 							<img src={item.image} alt="" loading="lazy" />
+							{#if isVideo}
+								<span class="video-badge">VIDEO</span>
+							{/if}
+						</div>
+					{:else if isVideo}
+						<div class="video-indicator">
+							<span class="video-badge">VIDEO</span>
 						</div>
 					{/if}
 					<div class="news-content">
@@ -194,6 +257,38 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+	}
+
+	.news-image {
+		position: relative;
+	}
+
+	.video-badge {
+		position: absolute;
+		bottom: 4px;
+		left: 4px;
+		padding: 2px 6px;
+		background: var(--color-ink);
+		color: var(--color-paper);
+		font-size: 0.5rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		border-radius: 2px;
+	}
+
+	.video-indicator {
+		flex-shrink: 0;
+		width: 80px;
+		height: 60px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--color-newsprint-dark);
+		border: 1px solid var(--color-border);
+	}
+
+	.video-indicator .video-badge {
+		position: static;
 	}
 
 	.news-content {

@@ -35,6 +35,7 @@ import insiderRoutes from './routes/insider.js';
 import screenerRoutes from './routes/screener.js';
 import analysisRoutes from './routes/analysis.js';
 import technicalsRoutes from './routes/technicals.js';
+import aiRoutes from './routes/ai.js';
 import { initializeScheduler } from './services/scheduler.js';
 import { warmCachesWithDelay } from './services/cacheWarmer.js';
 
@@ -134,6 +135,7 @@ app.use('/api/insider', insiderRoutes);
 app.use('/api/screener', screenerRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/technicals', technicalsRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Serve portraits with aggressive caching (1 year) - images are pre-generated and static
 app.use('/portraits', express.static(path.join(__dirname, '../portraits'), {

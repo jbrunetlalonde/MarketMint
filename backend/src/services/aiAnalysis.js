@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import crypto from 'crypto';
 import { config } from '../config/env.js';
 import { query } from '../config/database.js';
 import fmp from './financialModelPrep.js';
@@ -380,6 +381,118 @@ function formatNumber(value) {
   return `$${num.toFixed(2)}`;
 }
 
+// Cache TTL for article summaries (7 days - articles don't change)
+const SUMMARY_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Generate a hash for cache key from URL or text
+ */
+function generateCacheKey(url, text) {
+  const content = url || text.slice(0, 500);
+  return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
+}
+
+/**
+ * Get cached article summary
+ */
+async function getCachedSummary(cacheKey) {
+  try {
+    const result = await query(
+      `SELECT data, created_at FROM ai_analysis_cache
+       WHERE ticker = $1 AND analysis_type = 'article_summary' AND expires_at > NOW()`,
+      [cacheKey]
+    );
+    if (result.rows.length > 0) {
+      return {
+        ...result.rows[0].data,
+        cached: true,
+        generatedAt: result.rows[0].created_at
+      };
+    }
+    return null;
+  } catch (err) {
+    console.error('Error checking summary cache:', err);
+    return null;
+  }
+}
+
+/**
+ * Cache article summary
+ */
+async function cacheSummary(cacheKey, data) {
+  try {
+    const expiresAt = new Date(Date.now() + SUMMARY_CACHE_TTL);
+    await query(
+      `INSERT INTO ai_analysis_cache (ticker, analysis_type, data, expires_at)
+       VALUES ($1, 'article_summary', $2, $3)
+       ON CONFLICT (ticker, analysis_type)
+       DO UPDATE SET data = $2, created_at = NOW(), expires_at = $3`,
+      [cacheKey, JSON.stringify(data), expiresAt]
+    );
+  } catch (err) {
+    console.error('Error caching summary:', err);
+  }
+}
+
+/**
+ * Summarize article content with caching
+ */
+export async function summarizeArticle(text, title = '', url = null) {
+  if (!config.openaiApiKey) {
+    throw new Error('OpenAI API key not configured');
+  }
+
+  if (!text || text.trim().length < 100) {
+    throw new Error('Article text is too short to summarize');
+  }
+
+  // Check cache first
+  const cacheKey = generateCacheKey(url, text);
+  const cached = await getCachedSummary(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const prompt = `Summarize the following news article in 3-4 sentences. Focus on the key facts, implications, and any market-relevant information.
+
+${title ? `Title: ${title}\n\n` : ''}Article:
+${text.slice(0, 6000)}
+
+Provide a clear, factual summary that helps readers quickly understand the main points.`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a financial news analyst providing concise article summaries for investors. Be factual, clear, and focus on market implications.'
+        },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 300
+    });
+
+    const result = {
+      summary: completion.choices[0]?.message?.content || 'Unable to generate summary.',
+      title: title || null
+    };
+
+    // Cache the result
+    await cacheSummary(cacheKey, result);
+
+    return {
+      ...result,
+      cached: false,
+      generatedAt: new Date().toISOString()
+    };
+  } catch (err) {
+    console.error('OpenAI summarize error:', err);
+    throw new Error(`Failed to summarize article: ${err.message}`);
+  }
+}
+
 /**
  * Check if OpenAI is configured
  */
@@ -391,5 +504,6 @@ export default {
   generateSWOT,
   explainMetric,
   explainSection,
+  summarizeArticle,
   isConfigured
 };
