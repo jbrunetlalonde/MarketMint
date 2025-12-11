@@ -31,12 +31,12 @@
 </script>
 
 {#if href}
-	<a {href} class="card block hover:bg-paper-secondary transition-colors" class:compact>
-		<div class="flex justify-between items-start">
+	<a {href} class="price-card" class:compact>
+		<div class="card-header">
 			<div>
 				<span class="ticker-symbol">{ticker}</span>
 				{#if name && !compact}
-					<div class="text-xs text-ink-muted truncate max-w-32">{name}</div>
+					<div class="company-name">{name}</div>
 				{/if}
 			</div>
 			{#if changePercent !== null}
@@ -46,30 +46,30 @@
 			{/if}
 		</div>
 
-		<div class="mt-2">
-			<div class="text-xl font-semibold">
+		<div class="card-body">
+			<div class="price">
 				{price !== null ? formatCurrency(price) : '--'}
 			</div>
 			{#if change !== null && !compact}
-				<div class={priceClass}>
+				<div class="change {priceClass}">
 					{change >= 0 ? '+' : ''}{formatCurrency(change, 'USD', 2)}
 				</div>
 			{/if}
 		</div>
 
 		{#if showVolume && volume}
-			<div class="mt-2 text-xs text-ink-muted">
+			<div class="volume">
 				Vol: {formatCompact(volume)}
 			</div>
 		{/if}
 	</a>
 {:else}
-	<div class="card" class:compact>
-		<div class="flex justify-between items-start">
+	<div class="price-card" class:compact>
+		<div class="card-header">
 			<div>
 				<span class="ticker-symbol">{ticker}</span>
 				{#if name && !compact}
-					<div class="text-xs text-ink-muted truncate max-w-32">{name}</div>
+					<div class="company-name">{name}</div>
 				{/if}
 			</div>
 			{#if changePercent !== null}
@@ -79,19 +79,19 @@
 			{/if}
 		</div>
 
-		<div class="mt-2">
-			<div class="text-xl font-semibold">
+		<div class="card-body">
+			<div class="price">
 				{price !== null ? formatCurrency(price) : '--'}
 			</div>
 			{#if change !== null && !compact}
-				<div class={priceClass}>
+				<div class="change {priceClass}">
 					{change >= 0 ? '+' : ''}{formatCurrency(change, 'USD', 2)}
 				</div>
 			{/if}
 		</div>
 
 		{#if showVolume && volume}
-			<div class="mt-2 text-xs text-ink-muted">
+			<div class="volume">
 				Vol: {formatCompact(volume)}
 			</div>
 		{/if}
@@ -99,15 +99,74 @@
 {/if}
 
 <style>
-	.compact {
+	.price-card {
+		display: block;
 		padding: 0.75rem;
+		border: 1px solid var(--color-border);
+		text-decoration: none;
+		color: inherit;
+		transition: background 0.15s ease;
+	}
+
+	.price-card:hover {
+		background: var(--color-newsprint);
+	}
+
+	.card-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+	}
+
+	.ticker-symbol {
+		font-family: var(--font-mono);
+		font-size: 1rem;
+		font-weight: 700;
+		color: var(--color-ink);
+	}
+
+	.company-name {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 8rem;
+	}
+
+	.card-body {
+		margin-top: 0.5rem;
+	}
+
+	.price {
+		font-family: var(--font-mono);
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: var(--color-ink);
+	}
+
+	.change {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+	}
+
+	.volume {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+		margin-top: 0.5rem;
+	}
+
+	.compact {
+		padding: 0.5rem;
 	}
 
 	.compact .ticker-symbol {
 		font-size: 0.875rem;
 	}
 
-	.compact .text-xl {
+	.compact .price {
 		font-size: 1rem;
 	}
 </style>

@@ -12,14 +12,39 @@
 
 	interface Props {
 		holders: Holder[];
+		sharesOutstanding?: number | null;
 		loading?: boolean;
 		limit?: number;
+		ticker?: string;
 	}
 
-	let { holders, loading = false, limit = 10 }: Props = $props();
+	let { holders, sharesOutstanding, loading = false, limit = 10, ticker }: Props = $props();
 
 	const displayHolders = $derived(holders.slice(0, limit));
 	const totalShares = $derived(holders.reduce((sum, h) => sum + h.shares, 0));
+
+	// Calculate stats
+	const stats = $derived.by(() => {
+		if (!holders || holders.length === 0) return null;
+
+		const netChange = holders.reduce((sum, h) => sum + (h.change || 0), 0);
+		const buyers = holders.filter(h => h.change > 0).length;
+		const sellers = holders.filter(h => h.change < 0).length;
+		const unchanged = holders.filter(h => h.change === 0).length;
+
+		const ownershipPercent = sharesOutstanding && sharesOutstanding > 0
+			? (totalShares / sharesOutstanding) * 100
+			: null;
+
+		return {
+			totalShares,
+			netChange,
+			buyers,
+			sellers,
+			unchanged,
+			ownershipPercent
+		};
+	});
 </script>
 
 <div class="institutional-owners">
@@ -31,15 +56,44 @@
 	</div>
 
 	{#if loading}
-		<div class="loading">Loading institutional data...</div>
+		<div class="loading">
+			<div class="skeleton-stats"></div>
+			{#each Array(4) as _, i (i)}
+				<div class="skeleton-row"></div>
+			{/each}
+		</div>
 	{:else if holders.length === 0}
 		<EmptyState
 			title="No institutional ownership data"
-			description="Smaller companies may not have reportable institutional holdings."
+			description="Institutional holdings are not available for {ticker || 'this stock'}."
 			compact
 		/>
 	{:else}
 		<div class="content">
+			<!-- Summary Stats -->
+			{#if stats}
+				<div class="summary-stats">
+					<div class="stat">
+						<span class="stat-value">{formatCompact(stats.totalShares)}</span>
+						<span class="stat-label">Total Shares</span>
+					</div>
+					<div class="stat">
+						<span class="stat-value" class:positive={stats.netChange > 0} class:negative={stats.netChange < 0}>
+							{#if stats.netChange > 0}+{/if}{formatCompact(stats.netChange)}
+						</span>
+						<span class="stat-label">Net Change</span>
+					</div>
+					<div class="stat">
+						<span class="stat-value buyer">{stats.buyers}</span>
+						<span class="stat-label">Buying</span>
+					</div>
+					<div class="stat">
+						<span class="stat-value seller">{stats.sellers}</span>
+						<span class="stat-label">Selling</span>
+					</div>
+				</div>
+			{/if}
+
 			<table>
 				<thead>
 					<tr>
@@ -119,17 +173,77 @@
 		color: var(--color-ink-muted);
 	}
 
-	.loading,
-	.empty {
-		padding: 2rem;
-		text-align: center;
-		color: var(--color-ink-muted);
-		font-family: 'IBM Plex Mono', monospace;
-		font-size: 0.75rem;
+	.loading {
+		padding: 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.skeleton-stats {
+		height: 3rem;
+		background: var(--color-newsprint-dark);
+		border-radius: 2px;
+		animation: pulse 1.5s infinite;
+		margin-bottom: 0.5rem;
+	}
+
+	.skeleton-row {
+		height: 2rem;
+		background: var(--color-newsprint-dark);
+		border-radius: 2px;
+		animation: pulse 1.5s infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 0.5; }
+		50% { opacity: 1; }
 	}
 
 	.content {
 		padding: 0;
+	}
+
+	.summary-stats {
+		display: flex;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.stat {
+		flex: 1;
+		padding: 0.75rem;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		border-right: 1px solid var(--color-border);
+	}
+
+	.stat:last-child {
+		border-right: none;
+	}
+
+	.stat-label {
+		font-family: 'IBM Plex Mono', monospace;
+		font-size: 0.5rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-ink-muted);
+	}
+
+	.stat-value {
+		font-family: 'IBM Plex Mono', monospace;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--color-ink);
+	}
+
+	.stat-value.buyer {
+		color: var(--color-gain);
+	}
+
+	.stat-value.seller {
+		color: var(--color-loss);
 	}
 
 	table {

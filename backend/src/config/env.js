@@ -32,15 +32,13 @@ export const config = {
   jwtExpiresIn: '24h',
   jwtRefreshExpiresIn: '7d',
 
-  // External APIs
-  yahooApiKey: process.env.YAHOO_API_KEY || '',
+  // External APIs - FMP is primary data source
   fmpApiKey: process.env.FMP_API_KEY || '',
   serpApiKey: process.env.SERP_API_KEY || '',
-  alphaVantageApiKey: process.env.ALPHA_VANTAGE_API_KEY || '',
   newsApiKey: process.env.NEWS_API_KEY || '',
   replicateApiToken: process.env.REPLICATE_API_TOKEN || '',
   fredApiKey: process.env.FRED_API_KEY || '',
-  finnhubApiKey: process.env.FINNHUB_API_KEY || '',
+  openaiApiKey: process.env.OPENAI_API_KEY || '',
 
   // Monitoring
   sentryDsn: process.env.SENTRY_DSN || '',

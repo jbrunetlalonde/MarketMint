@@ -13,6 +13,8 @@ import { ideasApi } from './api/ideas';
 import { portfolioApi } from './api/portfolio';
 import { newsletterApi } from './api/newsletter';
 import { searchApi } from './api/search';
+import { screenerApi } from './api/screener';
+import { analysisApi } from './api/analysis';
 
 // Re-export types
 export type { ApiOptions, ApiResponse } from './api/request';
@@ -30,6 +32,10 @@ export const api = {
 	getQuote: quotesApi.getQuote,
 	getBulkQuotes: quotesApi.getBulkQuotes,
 	getHistory: quotesApi.getHistory,
+	getMovers: quotesApi.getMovers,
+	getSectorPerformance: quotesApi.getSectorPerformance,
+	getIndustryPerformance: quotesApi.getIndustryPerformance,
+	getMarketStatus: quotesApi.getMarketStatus,
 
 	// Watchlist
 	getWatchlist: watchlistApi.getWatchlist,
@@ -54,7 +60,28 @@ export const api = {
 	getDividends: financialsApi.getDividends,
 	getSplits: financialsApi.getSplits,
 	getFullFinancials: financialsApi.getFullFinancials,
-	getEarningsCalendar: financialsApi.getEarningsCalendar,
+	getEarningsCalendar: financialsApi.getEarningsCalendar as (params?: { days?: number; from?: string; to?: string }) => ReturnType<typeof financialsApi.getEarningsCalendar>,
+	getEarningsHistory: financialsApi.getEarningsHistory,
+	getSecFilings: financialsApi.getSecFilings,
+	getAnalystGrades: financialsApi.getAnalystGrades,
+	getStockNews: financialsApi.getStockNews,
+	getKeyMetrics: financialsApi.getKeyMetrics,
+	getRevenueSegmentsV2: financialsApi.getRevenueSegmentsV2,
+	getAnalystEstimates: financialsApi.getAnalystEstimates,
+	getHolders: financialsApi.getHolders,
+	getETFHoldings: financialsApi.getETFHoldings,
+	getPressReleases: financialsApi.getPressReleases,
+	getDividendInfo: financialsApi.getDividendInfo,
+	getDetailedGrades: financialsApi.getDetailedGrades,
+	getPriceTargetSummary: financialsApi.getPriceTargetSummary,
+	// FMP Starter Pack Expansion
+	getFinancialScore: financialsApi.getFinancialScore,
+	getSharesFloat: financialsApi.getSharesFloat,
+	getInsiderTradeStats: financialsApi.getInsiderStats,
+	getAftermarketQuote: financialsApi.getAftermarketQuote,
+	getIncomeStatementTTM: financialsApi.getIncomeStatementTTM,
+	getBalanceSheetTTM: financialsApi.getBalanceSheetTTM,
+	getCashFlowTTM: financialsApi.getCashFlowTTM,
 
 	// News
 	getNews: newsApi.getNews,
@@ -79,8 +106,11 @@ export const api = {
 	// Economic
 	getEconomicIndicators: economicApi.getEconomicIndicators,
 	getEconomicDashboard: economicApi.getEconomicDashboard,
-	getEconomicSeries: economicApi.getEconomicSeries,
-	getAvailableEconomicSeries: economicApi.getAvailableEconomicSeries,
+	getTreasuryRates: economicApi.getTreasuryRates,
+	getEconomicCalendar: economicApi.getEconomicCalendar,
+	getIPOCalendar: economicApi.getIPOCalendar,
+	getDividendCalendar: economicApi.getDividendCalendar,
+	getSplitCalendar: economicApi.getSplitCalendar,
 
 	// Charts
 	getOHLC: chartsApi.getOHLC,
@@ -119,7 +149,18 @@ export const api = {
 	unsubscribeNewsletter: newsletterApi.unsubscribeNewsletter,
 
 	// Search
-	searchSymbols: searchApi.searchSymbols
+	searchSymbols: searchApi.searchSymbols,
+
+	// Screener
+	screenStocks: screenerApi.screenStocks,
+	getScreenerSectors: screenerApi.getSectors,
+	getScreenerExchanges: screenerApi.getExchanges,
+
+	// Analysis (AI)
+	getSWOT: analysisApi.getSWOT,
+	refreshSWOT: analysisApi.refreshSWOT,
+	explainMetric: analysisApi.explainMetric,
+	getAnalysisStatus: analysisApi.getStatus
 };
 
 export default api;

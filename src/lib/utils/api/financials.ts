@@ -209,8 +209,15 @@ export const financialsApi = {
 			peers: string[];
 		}>(`/api/financials/${ticker}/full`, { token }),
 
-	getEarningsCalendar: (days = 7) =>
-		request<
+	getEarningsCalendar: (params: { days?: number; from?: string; to?: string } = {}) => {
+		const searchParams = new URLSearchParams();
+		if (params.from && params.to) {
+			searchParams.set('from', params.from);
+			searchParams.set('to', params.to);
+		} else {
+			searchParams.set('days', String(params.days || 7));
+		}
+		return request<
 			Array<{
 				symbol: string;
 				date: string;
@@ -219,5 +226,289 @@ export const financialsApi = {
 				revenue: number | null;
 				revenueEstimate: number | null;
 			}>
-		>(`/api/financials/earnings/calendar?days=${days}`)
+		>(`/api/financials/earnings/calendar?${searchParams.toString()}`);
+	},
+
+	getEarningsHistory: (ticker: string, limit = 8, token?: string) =>
+		request<
+			Array<{
+				date: string;
+				symbol: string;
+				actualEarningsResult: number | null;
+				estimatedEarning: number | null;
+				revenue: number | null;
+				revenueEstimated: number | null;
+				surprisePercent: number | null;
+				revenueSurprisePercent: number | null;
+			}>
+		>(`/api/financials/${ticker}/earnings-history?limit=${limit}`, { token }),
+
+	getSecFilings: (ticker: string, limit = 20, token?: string) =>
+		request<
+			Array<{
+				symbol: string;
+				cik: string;
+				formType: string;
+				filingDate: string;
+				acceptedDate: string;
+				link: string;
+				finalLink: string;
+			}>
+		>(`/api/financials/${ticker}/sec-filings?limit=${limit}`, { token }),
+
+	getAnalystGrades: (ticker: string, limit = 20, token?: string) =>
+		request<
+			Array<{
+				symbol: string;
+				publishedDate: string;
+				gradingCompany: string;
+				newGrade: string;
+				previousGrade: string;
+				action: string;
+			}>
+		>(`/api/financials/${ticker}/analyst-grades?limit=${limit}`, { token }),
+
+	getStockNews: (ticker: string, limit = 10, token?: string) =>
+		request<
+			Array<{
+				title: string;
+				url: string;
+				publishedDate: string;
+				site: string;
+				text?: string;
+				image?: string;
+			}>
+		>(`/api/financials/${ticker}/news?limit=${limit}`, { token }),
+
+	getInsiderTrades: (ticker: string, limit = 20, token?: string) =>
+		request<
+			Array<{
+				filingDate: string;
+				transactionDate: string;
+				reportingName: string;
+				transactionType: string;
+				securitiesTransacted: number;
+				price: number | null;
+				securityName: string;
+				typeOfOwner: string;
+			}>
+		>(`/api/financials/${ticker}/insider-trades?limit=${limit}`, { token }),
+
+	getKeyMetrics: (ticker: string, token?: string) =>
+		request<{
+			// Valuation
+			peRatio?: number | null;
+			pbRatio?: number | null;
+			evToEbitda?: number | null;
+			pegRatio?: number | null;
+			// Profitability
+			grossProfitMargin?: number | null;
+			operatingProfitMargin?: number | null;
+			netProfitMargin?: number | null;
+			roe?: number | null;
+			roa?: number | null;
+			// Growth
+			revenueGrowth?: number | null;
+			epsGrowth?: number | null;
+			// Financial Health
+			debtToEquity?: number | null;
+			currentRatio?: number | null;
+			freeCashFlow?: number | null;
+			// Dividends
+			dividendYield?: number | null;
+		}>(`/api/financials/${ticker}/key-metrics`, { token }),
+
+	getRevenueSegmentsV2: (ticker: string, token?: string) =>
+		request<{
+			productSegments: Array<{ segment: string; revenue: number; year: number }>;
+			geographicSegments: Array<{ segment: string; revenue: number; year: number }>;
+		}>(`/api/financials/${ticker}/revenue-segments`, { token }),
+
+	getAnalystEstimates: (ticker: string, period = 'quarter', limit = 8, token?: string) =>
+		request<
+			Array<{
+				date: string;
+				symbol: string;
+				estimatedRevenueLow: number;
+				estimatedRevenueHigh: number;
+				estimatedRevenueAvg: number;
+				estimatedEpsLow: number;
+				estimatedEpsHigh: number;
+				estimatedEpsAvg: number;
+				estimatedNetIncomeLow: number;
+				estimatedNetIncomeHigh: number;
+				estimatedNetIncomeAvg: number;
+				numberAnalystEstimatedRevenue: number;
+				numberAnalystsEstimatedEps: number;
+			}>
+		>(`/api/financials/${ticker}/estimates?period=${period}&limit=${limit}`, { token }),
+
+	getHolders: (ticker: string, limit = 20, token?: string) =>
+		request<{
+			institutional: Array<{
+				holder: string;
+				shares: number;
+				dateReported: string;
+				change: number;
+				changePercentage: number;
+			}>;
+			mutualFunds: Array<{
+				holder: string;
+				shares: number;
+				dateReported: string;
+				change: number;
+				changePercentage: number;
+				marketValue: number;
+			}>;
+		}>(`/api/financials/${ticker}/holders?limit=${limit}`, { token }),
+
+	getETFHoldings: (ticker: string, limit = 50, token?: string) =>
+		request<
+			Array<{
+				asset: string;
+				sharesNumber: number;
+				weightPercentage: number;
+				marketValue: number;
+			}>
+		>(`/api/financials/${ticker}/etf-holdings?limit=${limit}`, { token }),
+
+	getPressReleases: (ticker: string, limit = 20, token?: string) =>
+		request<
+			Array<{
+				symbol: string;
+				date: string;
+				title: string;
+				text: string;
+			}>
+		>(`/api/financials/${ticker}/press-releases?limit=${limit}`, { token }),
+
+	getDetailedGrades: (ticker: string, limit = 100, token?: string) =>
+		request<
+			Array<{
+				symbol: string;
+				date: string;
+				gradingCompany: string;
+				previousGrade: string;
+				newGrade: string;
+				action: string;
+			}>
+		>(`/api/financials/${ticker}/detailed-grades?limit=${limit}`, { token }),
+
+	getPriceTargetSummary: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			lastMonthCount: number;
+			lastMonthAvgPriceTarget: number;
+			lastQuarterCount: number;
+			lastQuarterAvgPriceTarget: number;
+			lastYearCount: number;
+			lastYearAvgPriceTarget: number;
+			allTimeCount: number;
+			allTimeAvgPriceTarget: number;
+			publishers: string[];
+		} | null>(`/api/financials/${ticker}/price-target-summary`, { token }),
+
+	getDividendInfo: (ticker: string, token?: string) =>
+		request<{
+			paysDividend: boolean;
+			annualDividend: number | null;
+			dividendYield: number | null;
+			dividendGrowthRate: number | null;
+			payoutRatio: number | null;
+			consecutiveYears: number;
+			frequency: string | null;
+			lastDividendDate: string | null;
+			lastDividendAmount: number | null;
+		} | null>(`/api/financials/${ticker}/dividend-info`, { token }),
+
+	// FMP Starter Pack Expansion
+	getFinancialScore: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			piotroskiScore: number | null;
+			altmanZScore: number | null;
+			workingCapital: number | null;
+			totalAssets: number | null;
+			retainedEarnings: number | null;
+			ebit: number | null;
+			marketCap: number | null;
+			totalLiabilities: number | null;
+			revenue: number | null;
+		} | null>(`/api/financials/${ticker}/score`, { token }),
+
+	getSharesFloat: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			floatShares: number | null;
+			outstandingShares: number | null;
+			freeFloat: number | null;
+			date: string | null;
+		} | null>(`/api/financials/${ticker}/float`, { token }),
+
+	getInsiderStats: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			totalBought: number;
+			totalSold: number;
+			buyCount: number;
+			sellCount: number;
+			averageBuyPrice: number | null;
+			averageSellPrice: number | null;
+			periodStart: string | null;
+			periodEnd: string | null;
+		} | null>(`/api/financials/${ticker}/insider-stats`, { token }),
+
+	getAftermarketQuote: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			preMarketPrice: number | null;
+			preMarketChange: number | null;
+			preMarketChangePercent: number | null;
+			postMarketPrice: number | null;
+			postMarketChange: number | null;
+			postMarketChangePercent: number | null;
+			timestamp: string | null;
+		} | null>(`/api/financials/${ticker}/aftermarket`, { token }),
+
+	getIncomeStatementTTM: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			period: string;
+			revenue: number;
+			costOfRevenue: number;
+			grossProfit: number;
+			operatingExpenses: number;
+			operatingIncome: number;
+			netIncome: number;
+			eps: number;
+			epsDiluted: number;
+			ebitda: number;
+		} | null>(`/api/financials/${ticker}/income-ttm`, { token }),
+
+	getBalanceSheetTTM: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			period: string;
+			cashAndCashEquivalents: number;
+			shortTermInvestments: number;
+			totalCurrentAssets: number;
+			totalAssets: number;
+			totalCurrentLiabilities: number;
+			totalLiabilities: number;
+			totalEquity: number;
+			totalDebt: number;
+			netDebt: number;
+		} | null>(`/api/financials/${ticker}/balance-ttm`, { token }),
+
+	getCashFlowTTM: (ticker: string, token?: string) =>
+		request<{
+			symbol: string;
+			period: string;
+			netIncome: number;
+			operatingCashFlow: number;
+			investingCashFlow: number;
+			financingCashFlow: number;
+			freeCashFlow: number;
+			capitalExpenditure: number;
+		} | null>(`/api/financials/${ticker}/cashflow-ttm`, { token })
 };

@@ -1,13 +1,5 @@
-import yahooFinance from 'yahoo-finance2';
+import fmp from './financialModelPrep.js';
 import { query } from '../config/database.js';
-import { config } from '../config/env.js';
-
-// Suppress yahoo-finance2 validation warnings
-yahooFinance.setGlobalConfig({
-  validation: {
-    logErrors: config.nodeEnv === 'development'
-  }
-});
 
 // Memory cache for recent requests
 const memoryCache = new Map();
@@ -104,31 +96,30 @@ async function findMissingRanges(ticker, startDate, endDate, existingDates) {
 }
 
 /**
- * Fetch historical data from Yahoo Finance
+ * Fetch historical data from FMP
  */
-async function fetchFromYahoo(ticker, startDate, endDate, interval = '1d') {
+async function fetchFromFMP(ticker, startDate, endDate) {
   try {
-    const result = await yahooFinance.chart(ticker, {
-      period1: startDate,
-      period2: endDate,
-      interval
-    });
+    const fromDate = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
+    const toDate = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
 
-    if (!result || !result.quotes) {
+    const data = await fmp.getHistoricalPrices(ticker, fromDate, toDate);
+
+    if (!Array.isArray(data) || data.length === 0) {
       return [];
     }
 
-    return result.quotes.map(q => ({
-      date: q.date,
+    return data.map(q => ({
+      date: new Date(q.date),
       open: q.open,
       high: q.high,
       low: q.low,
       close: q.close,
       volume: q.volume,
-      adjustedClose: q.adjclose || q.close
+      adjustedClose: q.adjClose || q.close
     })).filter(q => q.open != null && q.close != null);
   } catch (err) {
-    console.error(`Yahoo Finance historical error for ${ticker}:`, err.message);
+    console.error(`FMP historical error for ${ticker}:`, err.message);
     return [];
   }
 }
@@ -143,13 +134,14 @@ export async function getHistoricalOHLC(ticker, period = '1y') {
   let interval = '1d';
 
   // Calculate date range based on period
+  // For 1d/5d: use 1 week of daily data as fallback when intraday unavailable
   switch (period) {
     case '1d':
-      startDate.setDate(startDate.getDate() - 1);
+      startDate.setDate(startDate.getDate() - 7); // Get 1 week for fallback
       interval = '5m';
       break;
     case '5d':
-      startDate.setDate(startDate.getDate() - 7); // Extra days for weekends
+      startDate.setDate(startDate.getDate() - 14); // Extra days for weekends
       interval = '15m';
       break;
     case '1m':
@@ -161,11 +153,18 @@ export async function getHistoricalOHLC(ticker, period = '1y') {
     case '6m':
       startDate.setMonth(startDate.getMonth() - 6);
       break;
+    case 'ytd':
+      startDate.setMonth(0);
+      startDate.setDate(1);
+      break;
     case '1y':
       startDate.setFullYear(startDate.getFullYear() - 1);
       break;
     case '5y':
       startDate.setFullYear(startDate.getFullYear() - 5);
+      break;
+    case '10y':
+      startDate.setFullYear(startDate.getFullYear() - 10);
       break;
     case 'max':
       startDate.setFullYear(startDate.getFullYear() - 20);
@@ -184,12 +183,17 @@ export async function getHistoricalOHLC(ticker, period = '1y') {
     return cached;
   }
 
-  // For intraday data, always fetch fresh (not stored in DB)
+  // For intraday data, try FMP intraday endpoint
+  // Note: FMP Starter plan may not include intraday, fall back to daily data
   if (interval !== '1d') {
-    const data = await fetchFromYahoo(ticker, startDate, endDate, interval);
-    const formatted = formatOHLCData(data);
-    setMemoryCache(cacheKey, formatted);
-    return formatted;
+    const data = await fmp.getOHLCV(ticker, period);
+    const formatted = formatOHLCData(data || []);
+    if (formatted.length > 0) {
+      setMemoryCache(cacheKey, formatted);
+      return formatted;
+    }
+    // Fall back to recent daily data if intraday not available
+    console.log(`[PriceHistory] No intraday data for ${ticker}, falling back to daily`);
   }
 
   // For daily data, use DB-first strategy
@@ -212,13 +216,13 @@ export async function getHistoricalOHLC(ticker, period = '1y') {
 
   // If coverage is low or data is stale, fetch from API
   if (coverageRatio < 0.8 || (lastDbDate && isDataStale(lastDbDate))) {
-    // Fetch fresh data from Yahoo
-    const yahooData = await fetchFromYahoo(ticker, startDate, endDate, '1d');
+    // Fetch fresh data from FMP
+    const fmpData = await fetchFromFMP(ticker, startDate, endDate);
 
-    if (yahooData.length > 0) {
+    if (fmpData.length > 0) {
       // Store to database for future use
-      await storeToDatabase(ticker, yahooData);
-      finalData = yahooData;
+      await storeToDatabase(ticker, fmpData);
+      finalData = fmpData;
     }
   }
 
@@ -256,16 +260,35 @@ function isDataStale(lastDate) {
  * Format OHLC data for frontend consumption
  */
 function formatOHLCData(data) {
-  return data.map(d => ({
-    time: typeof d.date === 'string' ? d.date.split('T')[0] :
-          d.date instanceof Date ? d.date.toISOString().split('T')[0] :
-          new Date(d.date).toISOString().split('T')[0],
-    open: parseFloat(d.open) || 0,
-    high: parseFloat(d.high) || 0,
-    low: parseFloat(d.low) || 0,
-    close: parseFloat(d.close) || 0,
-    volume: parseInt(d.volume) || 0
-  })).filter(d => d.open > 0 && d.close > 0);
+  if (!Array.isArray(data) || data.length === 0) return [];
+
+  return data.map(d => {
+    // Handle various date formats safely - support both 'date' and 'time' properties
+    let time;
+    try {
+      const dateValue = d.date || d.time;
+      if (typeof dateValue === 'string') {
+        time = dateValue.split('T')[0];
+      } else if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+        time = dateValue.toISOString().split('T')[0];
+      } else if (dateValue && !isNaN(new Date(dateValue).getTime())) {
+        time = new Date(dateValue).toISOString().split('T')[0];
+      } else {
+        return null; // Skip invalid dates
+      }
+    } catch {
+      return null; // Skip on date parsing error
+    }
+
+    return {
+      time,
+      open: parseFloat(d.open) || 0,
+      high: parseFloat(d.high) || 0,
+      low: parseFloat(d.low) || 0,
+      close: parseFloat(d.close) || 0,
+      volume: parseInt(d.volume) || 0
+    };
+  }).filter(d => d && d.open > 0 && d.close > 0);
 }
 
 /**

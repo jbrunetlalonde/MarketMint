@@ -29,7 +29,7 @@
 	const barWidth = 200;
 	const barHeight = 24;
 
-	const positions = $derived(() => {
+	const positions = $derived.by(() => {
 		if (!targetHigh || !targetLow) return null;
 		const range = targetHigh - targetLow;
 		if (range <= 0) return null;
@@ -74,8 +74,8 @@
 					<span class="range-high">High: {targetHigh ? formatCurrency(targetHigh) : '--'}</span>
 				</div>
 
-				{#if positions()}
-					{@const pos = positions()}
+				{#if positions}
+					{@const pos = positions}
 					<div class="range-bar">
 						<div class="bar-track"></div>
 

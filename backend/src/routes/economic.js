@@ -1,110 +1,237 @@
 import { Router } from 'express';
-import { ApiError } from '../middleware/errorHandler.js';
-import fred from '../services/fredApi.js';
+import economicData from '../services/economicData.js';
+import fmp from '../services/financialModelPrep.js';
 
 const router = Router();
 
 /**
  * GET /api/economic/indicators
- * Get all key economic indicators
+ * Get all key economic indicators (Treasury, GDP, CPI, Unemployment)
  */
 router.get('/indicators', async (req, res, next) => {
   try {
-    const indicators = await fred.getAllIndicators();
+    const indicators = await economicData.getAllEconomicIndicators();
     res.json({ success: true, data: indicators });
   } catch (err) {
-    next(err);
+    console.error('Economic indicators error:', err.message);
+    res.json({ success: true, data: null, error: { message: err.message } });
+  }
+});
+
+/**
+ * GET /api/economic/treasury
+ * Get current treasury rates
+ */
+router.get('/treasury', async (req, res, next) => {
+  try {
+    const rates = await economicData.getTreasuryRates();
+    res.json({ success: true, data: rates });
+  } catch (err) {
+    console.error('Treasury rates error:', err.message);
+    res.json({ success: true, data: null, error: { message: err.message } });
+  }
+});
+
+/**
+ * GET /api/economic/calendar
+ * Get economic calendar events
+ */
+router.get('/calendar', async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+
+    // Default to next 30 days if not specified
+    const fromDate = from || new Date().toISOString().split('T')[0];
+    const toDate = to || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const calendar = await economicData.getEconomicCalendar(fromDate, toDate);
+    res.json({ success: true, data: calendar });
+  } catch (err) {
+    console.error('Economic calendar error:', err.message);
+    res.json({ success: true, data: [], error: { message: err.message } });
   }
 });
 
 /**
  * GET /api/economic/dashboard
- * Get summary data for frontend dashboard
+ * Get dashboard summary - transforms FMP data to expected format
  */
 router.get('/dashboard', async (req, res, next) => {
   try {
-    const indicators = await fred.getAllIndicators();
+    const data = await economicData.getAllEconomicIndicators();
 
+    // Transform FMP data to dashboard format expected by frontend
+    const treasury = data.treasury;
     const dashboard = {
-      fedFundsRate: indicators.FEDFUNDS || null,
-      treasury10Y: indicators.DGS10 || null,
-      treasury2Y: indicators.DGS2 || null,
-      yieldSpread: indicators.T10Y2Y || null,
-      unemployment: indicators.UNRATE || null,
-      cpi: indicators.CPIAUCSL || null,
-      vix: indicators.VIXCLS || null,
-      oilPrice: indicators.DCOILWTICO || null,
-      mortgageRate: indicators.MORTGAGE30US || null,
-      gdp: indicators.GDP || null
+      fedFundsRate: null, // FMP doesn't provide this directly
+      treasury10Y: treasury ? { latest: { date: treasury.date, value: treasury.year10 } } : null,
+      treasury2Y: treasury ? { latest: { date: treasury.date, value: treasury.year2 } } : null,
+      yieldSpread: treasury && treasury.year10 && treasury.year2
+        ? { latest: { date: treasury.date, value: treasury.year10 - treasury.year2 } }
+        : null,
+      unemployment: data.unemployment
+        ? { latest: { date: data.unemployment.date, value: data.unemployment.value } }
+        : null,
+      cpi: data.cpi
+        ? { latest: { date: data.cpi.date, value: data.cpi.value } }
+        : null,
+      vix: null, // FMP doesn't provide VIX in economic indicators
+      oilPrice: null, // FMP doesn't provide oil price in economic indicators
+      mortgageRate: null, // FMP doesn't provide mortgage rate
+      gdp: data.gdp
+        ? { latest: { date: data.gdp.date, value: data.gdp.value } }
+        : null
     };
 
     res.json({ success: true, data: dashboard });
   } catch (err) {
-    next(err);
+    console.error('Economic dashboard error:', err.message);
+    res.json({ success: true, data: null, error: { message: err.message } });
   }
 });
 
 /**
- * GET /api/economic/series/:seriesId
- * Get data for a specific FRED series
+ * GET /api/economic/indicator/:name
+ * Get specific economic indicator (GDP, CPI, unemploymentRate)
  */
-router.get('/series/:seriesId', async (req, res, next) => {
+router.get('/indicator/:name', async (req, res, next) => {
   try {
-    const { seriesId } = req.params;
-    const { limit = 30 } = req.query;
+    const { name } = req.params;
+    const validNames = ['GDP', 'CPI', 'unemploymentRate', 'federalFundsRate', 'retailSales'];
 
-    const validSeriesId = seriesId.toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-    if (!validSeriesId || validSeriesId.length > 20) {
-      throw new ApiError(400, 'Invalid series ID');
+    if (!validNames.includes(name)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: `Invalid indicator. Valid options: ${validNames.join(', ')}` }
+      });
     }
 
-    const data = await fred.getSeriesData(validSeriesId, {
-      limit: Math.min(parseInt(limit) || 30, 100)
-    });
-
-    if (!data) {
-      throw new ApiError(404, `Series ${validSeriesId} not found or unavailable`);
-    }
-
+    const data = await economicData.getEconomicIndicator(name);
     res.json({ success: true, data });
   } catch (err) {
-    next(err);
+    console.error(`Economic indicator (${req.params.name}) error:`, err.message);
+    res.json({ success: true, data: null, error: { message: err.message } });
   }
 });
 
 /**
- * GET /api/economic/series/:seriesId/info
- * Get metadata about a FRED series
+ * GET /api/economic/ipo-calendar
+ * Get upcoming IPOs
  */
-router.get('/series/:seriesId/info', async (req, res, next) => {
+router.get('/ipo-calendar', async (req, res, next) => {
   try {
-    const { seriesId } = req.params;
-    const validSeriesId = seriesId.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const { from, to } = req.query;
 
-    const info = await fred.getSeriesInfo(validSeriesId);
+    // Default to next 30 days
+    const fromDate = from || new Date().toISOString().split('T')[0];
+    const toDate = to || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    if (!info) {
-      throw new ApiError(404, `Series ${validSeriesId} not found`);
-    }
-
-    res.json({ success: true, data: info });
+    const ipos = await fmp.getIPOCalendar(fromDate, toDate);
+    res.json({ success: true, data: ipos });
   } catch (err) {
-    next(err);
+    console.error('IPO calendar error:', err.message);
+    res.json({ success: true, data: [], error: { message: err.message } });
   }
 });
 
 /**
- * GET /api/economic/available
- * Get list of available economic series
+ * GET /api/economic/ipo-prospectus
+ * Get IPO prospectus details (offering prices, SEC filings)
  */
-router.get('/available', (req, res) => {
-  const series = Object.entries(fred.ECONOMIC_SERIES).map(([id, meta]) => ({
-    seriesId: id,
-    ...meta
-  }));
+router.get('/ipo-prospectus', async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
 
-  res.json({ success: true, data: series });
+    // Default to next 30 days
+    const fromDate = from || new Date().toISOString().split('T')[0];
+    const toDate = to || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const prospectus = await fmp.getIPOProspectus(fromDate, toDate);
+    res.json({ success: true, data: prospectus });
+  } catch (err) {
+    console.error('IPO prospectus error:', err.message);
+    res.json({ success: true, data: [], error: { message: err.message } });
+  }
+});
+
+/**
+ * GET /api/economic/ipo-disclosure
+ * Get IPO disclosure filings (SEC documents)
+ */
+router.get('/ipo-disclosure', async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+
+    // Default to next 30 days
+    const fromDate = from || new Date().toISOString().split('T')[0];
+    const toDate = to || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const disclosure = await fmp.getIPODisclosure(fromDate, toDate);
+    res.json({ success: true, data: disclosure });
+  } catch (err) {
+    console.error('IPO disclosure error:', err.message);
+    res.json({ success: true, data: [], error: { message: err.message } });
+  }
+});
+
+/**
+ * GET /api/economic/dividend-calendar
+ * Get upcoming dividend dates
+ */
+router.get('/dividend-calendar', async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+
+    // Default to next 30 days
+    const fromDate = from || new Date().toISOString().split('T')[0];
+    const toDate = to || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const dividends = await fmp.getDividendCalendar(fromDate, toDate);
+    res.json({ success: true, data: dividends });
+  } catch (err) {
+    console.error('Dividend calendar error:', err.message);
+    res.json({ success: true, data: [], error: { message: err.message } });
+  }
+});
+
+/**
+ * GET /api/economic/split-calendar
+ * Get upcoming stock splits
+ */
+router.get('/split-calendar', async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+
+    // Default to next 30 days
+    const fromDate = from || new Date().toISOString().split('T')[0];
+    const toDate = to || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const splits = await fmp.getStockSplitCalendar(fromDate, toDate);
+    res.json({ success: true, data: splits });
+  } catch (err) {
+    console.error('Stock split calendar error:', err.message);
+    res.json({ success: true, data: [], error: { message: err.message } });
+  }
+});
+
+/**
+ * GET /api/economic/earnings-calendar
+ * Get upcoming earnings (convenience redirect to same data)
+ */
+router.get('/earnings-calendar', async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+
+    // Default to next 7 days
+    const fromDate = from || new Date().toISOString().split('T')[0];
+    const toDate = to || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const earnings = await fmp.getEarningsCalendar(fromDate, toDate);
+    res.json({ success: true, data: earnings });
+  } catch (err) {
+    console.error('Earnings calendar error:', err.message);
+    res.json({ success: true, data: [], error: { message: err.message } });
+  }
 });
 
 export default router;

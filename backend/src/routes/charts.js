@@ -22,7 +22,7 @@ router.get('/:ticker/ohlc', async (req, res, next) => {
       throw new ApiError(400, validation.error);
     }
 
-    const validPeriods = ['1d', '5d', '1m', '3m', '6m', '1y', '5y', 'max'];
+    const validPeriods = ['1d', '5d', '1m', '3m', '6m', 'ytd', '1y', '5y', '10y', 'max'];
     if (!validPeriods.includes(period)) {
       throw new ApiError(400, `Invalid period. Use: ${validPeriods.join(', ')}`);
     }

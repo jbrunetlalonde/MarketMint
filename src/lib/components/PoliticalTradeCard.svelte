@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { formatDate } from '$lib/utils/formatters';
-	import { getPortraitUrl, getCongressPortraitUrl } from '$lib/utils/urls';
+	import { getPortraitUrl, getCongressPortraitUrl, getAvatarFallback } from '$lib/utils/urls';
 	import { getPartyAbbrev, getPartyClass, getInitials } from '$lib/utils/political';
 
 	interface Trade {
@@ -39,6 +39,8 @@
 		? getPortraitUrl(trade.portraitUrl)
 		: getLocalPortraitUrl(trade.officialName, trade.title);
 	let portraitError = $state(false);
+
+	const fallbackAvatar = $derived(getAvatarFallback(trade.officialName));
 </script>
 
 <article class="card p-4 flex gap-4">
@@ -54,13 +56,13 @@
 				onerror={() => portraitError = true}
 			/>
 		{:else}
-			<div
-				class="w-16 h-20 flex items-center justify-center text-lg font-bold border border-ink-light {getPartyClass(
-					trade.party
-				)}"
-			>
-				{getInitials(trade.officialName)}
-			</div>
+			<img
+				src={fallbackAvatar}
+				alt={trade.officialName}
+				class="w-16 h-20 object-cover border border-ink-light bg-newsprint"
+				loading="lazy"
+				decoding="async"
+			/>
 		{/if}
 	</div>
 

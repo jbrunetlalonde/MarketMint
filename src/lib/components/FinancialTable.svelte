@@ -46,7 +46,13 @@
 
 	let { type, data, loading = false }: Props = $props();
 
-	const incomeRows = [
+	interface RowConfig {
+		key: string;
+		label: string;
+		isEps?: boolean;
+	}
+
+	const incomeRows: RowConfig[] = [
 		{ key: 'revenue', label: 'Revenue' },
 		{ key: 'grossProfit', label: 'Gross Profit' },
 		{ key: 'operatingIncome', label: 'Operating Income' },
@@ -54,7 +60,7 @@
 		{ key: 'eps', label: 'EPS', isEps: true }
 	];
 
-	const balanceRows = [
+	const balanceRows: RowConfig[] = [
 		{ key: 'cashAndCashEquivalents', label: 'Cash & Equivalents' },
 		{ key: 'totalAssets', label: 'Total Assets' },
 		{ key: 'totalLiabilities', label: 'Total Liabilities' },
@@ -63,7 +69,7 @@
 		{ key: 'netDebt', label: 'Net Debt' }
 	];
 
-	const cashflowRows = [
+	const cashflowRows: RowConfig[] = [
 		{ key: 'operatingCashFlow', label: 'Operating Cash Flow' },
 		{ key: 'investingCashFlow', label: 'Investing Cash Flow' },
 		{ key: 'financingCashFlow', label: 'Financing Cash Flow' },
@@ -92,7 +98,7 @@
 	);
 
 	function getValue(item: FinancialData, key: string): number | null {
-		const val = (item as Record<string, unknown>)[key];
+		const val = (item as unknown as Record<string, unknown>)[key];
 		return typeof val === 'number' ? val : null;
 	}
 

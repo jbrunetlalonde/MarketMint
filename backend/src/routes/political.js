@@ -15,8 +15,8 @@ const router = Router();
  */
 router.get('/trades', async (req, res, next) => {
   try {
-    const { party, ticker, chamber, transactionType, limit } = req.query;
-    const { limit: safeLimit } = validatePagination(0, limit);
+    const { party, ticker, chamber, transactionType, limit, offset } = req.query;
+    const { limit: safeLimit, offset: safeOffset } = validatePagination(offset, limit, { defaultLimit: 50, maxLimit: 200 });
     const safeParty = sanitizeString(party);
     const safeTicker = ticker ? sanitizeString(ticker, 5)?.toUpperCase() : undefined;
     const safeChamber = sanitizeString(chamber);
@@ -28,27 +28,45 @@ router.get('/trades', async (req, res, next) => {
         ticker: safeTicker,
         chamber: safeChamber,
         transactionType: safeType,
-        limit: safeLimit
+        limit: safeLimit,
+        offset: safeOffset
       });
 
       // If no trades found, use mock data
       if (!trades || trades.length === 0) {
+        const mockData = getMockTrades({ party, ticker, chamber, transactionType, limit: safeLimit });
         res.json({
           success: true,
-          data: getMockTrades({ party, ticker, chamber, transactionType, limit })
+          data: mockData,
+          pagination: {
+            limit: safeLimit,
+            offset: safeOffset,
+            hasMore: false
+          }
         });
         return;
       }
 
       res.json({
         success: true,
-        data: trades
+        data: trades,
+        pagination: {
+          limit: safeLimit,
+          offset: safeOffset,
+          hasMore: trades.length === safeLimit
+        }
       });
     } catch (err) {
-      logger.warn('Finnhub political trades failed, using mock data', { error: err.message });
+      logger.warn('FMP political trades failed, using mock data', { error: err.message });
+      const mockData = getMockTrades({ party, ticker, chamber, transactionType, limit: safeLimit });
       res.json({
         success: true,
-        data: getMockTrades({ party, ticker, chamber, transactionType, limit })
+        data: mockData,
+        pagination: {
+          limit: safeLimit,
+          offset: safeOffset,
+          hasMore: false
+        }
       });
     }
   } catch (err) {
@@ -75,7 +93,7 @@ router.get('/trades/:ticker', async (req, res, next) => {
         data: trades.slice(0, safeLimit)
       });
     } catch (err) {
-      logger.warn('Finnhub trades failed', { ticker, error: err.message });
+      logger.warn('FMP trades failed', { ticker, error: err.message });
       res.json({
         success: true,
         data: getMockTrades({ ticker: ticker.toUpperCase(), limit })
@@ -317,6 +335,22 @@ router.get('/cache-stats', (req, res) => {
     success: true,
     data: politicalTracker.getCacheStats()
   });
+});
+
+/**
+ * POST /api/political/sync-officials
+ * Sync all officials from FMP trades (fetches multiple pages)
+ */
+router.post('/sync-officials', async (req, res, next) => {
+  try {
+    const result = await politicalTracker.syncAllOfficials();
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;

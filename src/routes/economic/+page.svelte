@@ -61,7 +61,7 @@
 	<section class="col-span-full">
 		<h1 class="headline headline-xl">Economic Indicators</h1>
 		<p class="text-ink-muted mt-2">
-			Key economic data from the Federal Reserve Economic Data (FRED) database.
+			Key economic data from Financial Modeling Prep (FMP).
 		</p>
 	</section>
 
@@ -77,23 +77,10 @@
 			</div>
 		</div>
 	{:else if dashboard}
-		<!-- Interest Rates -->
+		<!-- Treasury Rates -->
 		<section class="col-span-6">
-			<h2 class="headline headline-lg border-b-2 border-ink pb-2 mb-4">Interest Rates</h2>
+			<h2 class="headline headline-lg border-b-2 border-ink pb-2 mb-4">Treasury Rates</h2>
 			<div class="space-y-4">
-				<div class="card">
-					<div class="flex justify-between items-center">
-						<div>
-							<h3 class="font-semibold">Fed Funds Rate</h3>
-							<p class="text-xs text-ink-muted">Target rate set by the Federal Reserve</p>
-						</div>
-						<div class="text-right">
-							<p class="text-2xl font-bold">{formatValue(dashboard.fedFundsRate?.latest?.value, '%')}</p>
-							<p class="text-xs text-ink-muted">{formatDate(dashboard.fedFundsRate?.latest?.date)}</p>
-						</div>
-					</div>
-				</div>
-
 				<div class="card">
 					<div class="flex justify-between items-center">
 						<div>
@@ -124,26 +111,13 @@
 					<div class="flex justify-between items-center">
 						<div>
 							<h3 class="font-semibold">10Y-2Y Spread</h3>
-							<p class="text-xs text-ink-muted">Yield curve indicator</p>
+							<p class="text-xs text-ink-muted">Yield curve indicator (negative = inverted)</p>
 						</div>
 						<div class="text-right">
 							<p class="text-2xl font-bold" class:text-red-600={dashboard.yieldSpread?.latest?.value != null && dashboard.yieldSpread.latest.value < 0}>
 								{formatValue(dashboard.yieldSpread?.latest?.value, '%')}
 							</p>
 							<p class="text-xs text-ink-muted">{formatDate(dashboard.yieldSpread?.latest?.date)}</p>
-						</div>
-					</div>
-				</div>
-
-				<div class="card">
-					<div class="flex justify-between items-center">
-						<div>
-							<h3 class="font-semibold">30-Year Mortgage</h3>
-							<p class="text-xs text-ink-muted">Average fixed rate</p>
-						</div>
-						<div class="text-right">
-							<p class="text-2xl font-bold">{formatValue(dashboard.mortgageRate?.latest?.value, '%')}</p>
-							<p class="text-xs text-ink-muted">{formatDate(dashboard.mortgageRate?.latest?.date)}</p>
 						</div>
 					</div>
 				</div>
@@ -192,34 +166,6 @@
 						</div>
 					</div>
 				</div>
-
-				<div class="card">
-					<div class="flex justify-between items-center">
-						<div>
-							<h3 class="font-semibold">VIX</h3>
-							<p class="text-xs text-ink-muted">Market volatility index</p>
-						</div>
-						<div class="text-right">
-							<p class="text-2xl font-bold" class:text-red-600={dashboard.vix?.latest?.value != null && dashboard.vix.latest.value > 30}>
-								{formatValue(dashboard.vix?.latest?.value, 'index')}
-							</p>
-							<p class="text-xs text-ink-muted">{formatDate(dashboard.vix?.latest?.date)}</p>
-						</div>
-					</div>
-				</div>
-
-				<div class="card">
-					<div class="flex justify-between items-center">
-						<div>
-							<h3 class="font-semibold">WTI Crude Oil</h3>
-							<p class="text-xs text-ink-muted">Price per barrel</p>
-						</div>
-						<div class="text-right">
-							<p class="text-2xl font-bold">{formatValue(dashboard.oilPrice?.latest?.value, 'USD')}</p>
-							<p class="text-xs text-ink-muted">{formatDate(dashboard.oilPrice?.latest?.date)}</p>
-						</div>
-					</div>
-				</div>
 			</div>
 		</section>
 
@@ -228,9 +174,8 @@
 			<div class="card bg-paper-dark">
 				<h3 class="font-semibold mb-2">About This Data</h3>
 				<p class="text-sm text-ink-muted">
-					Economic data is sourced from the Federal Reserve Economic Data (FRED) database maintained by
-					the Federal Reserve Bank of St. Louis. Data is cached for 24 hours. Some indicators update
-					daily, while others update monthly or quarterly.
+					Economic data is sourced from Financial Modeling Prep (FMP). Treasury rates update daily,
+					while GDP, CPI, and unemployment data update monthly or quarterly.
 				</p>
 			</div>
 		</section>

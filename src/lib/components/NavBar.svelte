@@ -42,6 +42,12 @@
 </script>
 
 <nav class="nav-bar">
+	<div class="nav-left">
+		<a href="/" class="nav-logo">
+			<img src="/favicon.png" alt="MarketMint" class="nav-logo-icon" />
+			<span class="nav-logo-text">MarketMint</span>
+		</a>
+	</div>
 	<div class="nav-links">
 		{#each links as link (link.href)}
 			<a href={link.href} class="nav-link" class:active={isActive(link.href)}>
@@ -65,7 +71,7 @@
 				</span>
 				<button onclick={onLogout} class="nav-link logout-btn">Logout</button>
 			{:else}
-				<a href="/auth/login" class="nav-link">Login</a>
+				<a href="/auth/login" class="nav-link login-link">Login</a>
 			{/if}
 		</div>
 	</div>

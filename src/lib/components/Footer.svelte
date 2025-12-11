@@ -46,6 +46,8 @@
 				<nav class="footer-links">
 					<a href="/markets">Stocks</a>
 					<a href="/political">Congress Trades</a>
+					<a href="/earnings">Earnings Calendar</a>
+					<a href="/economic">Economic Data</a>
 					<a href="/alerts">Alerts</a>
 				</nav>
 			</div>

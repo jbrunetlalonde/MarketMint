@@ -1,11 +1,10 @@
-import { config } from '../config/env.js';
+import fmp from './financialModelPrep.js';
 import { query } from '../config/database.js';
+import { config } from '../config/env.js';
 
 // Memory cache
 const memoryCache = new Map();
 const MEMORY_TTL = 300000; // 5 minutes
-
-const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 
 function getMemoryCache(key) {
   const cached = memoryCache.get(key);
@@ -18,28 +17,6 @@ function getMemoryCache(key) {
 
 function setMemoryCache(key, data, ttlMs = MEMORY_TTL) {
   memoryCache.set(key, { data, expires: Date.now() + ttlMs });
-}
-
-async function fetchFinnhub(endpoint) {
-  if (!config.finnhubApiKey) {
-    console.warn('Finnhub API key not configured');
-    return null;
-  }
-
-  try {
-    const url = `${FINNHUB_BASE_URL}${endpoint}${endpoint.includes('?') ? '&' : '?'}token=${config.finnhubApiKey}`;
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      console.error(`Finnhub API error: ${response.status}`);
-      return null;
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Finnhub fetch error:', error.message);
-    return null;
-  }
 }
 
 async function getNewsFromDB(ticker = null, limit = 20) {
@@ -114,14 +91,18 @@ export async function getLatestNews(limit = 20) {
     return formatted;
   }
 
-  // 3. Fetch from Finnhub general news
-  const news = await fetchFinnhub('/news?category=general');
+  // 3. Fetch from FMP general news
+  try {
+    const news = await fmp.getGeneralNews(50);
 
-  if (news && Array.isArray(news) && news.length > 0) {
-    await saveNewsToDB(news.slice(0, 50));
-    const result = formatNewsItems(news.slice(0, limit));
-    setMemoryCache(cacheKey, result);
-    return result;
+    if (news && Array.isArray(news) && news.length > 0) {
+      await saveNewsToDB(news.slice(0, 50));
+      const result = formatNewsItems(news.slice(0, limit));
+      setMemoryCache(cacheKey, result);
+      return result;
+    }
+  } catch (err) {
+    console.error('FMP news fetch error:', err.message);
   }
 
   return [];
@@ -143,19 +124,18 @@ export async function getTickerNews(ticker, limit = 10) {
     return formatted;
   }
 
-  // 3. Fetch from Finnhub company news
-  const today = new Date();
-  const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const fromDate = thirtyDaysAgo.toISOString().split('T')[0];
-  const toDate = today.toISOString().split('T')[0];
+  // 3. Fetch from FMP stock news
+  try {
+    const news = await fmp.getStockNews(normalizedTicker, limit);
 
-  const news = await fetchFinnhub(`/company-news?symbol=${normalizedTicker}&from=${fromDate}&to=${toDate}`);
-
-  if (news && Array.isArray(news) && news.length > 0) {
-    await saveNewsToDB(news.slice(0, limit), normalizedTicker);
-    const result = formatNewsItems(news.slice(0, limit));
-    setMemoryCache(cacheKey, result);
-    return result;
+    if (news && Array.isArray(news) && news.length > 0) {
+      await saveNewsToDB(news.slice(0, limit), normalizedTicker);
+      const result = formatNewsItems(news.slice(0, limit));
+      setMemoryCache(cacheKey, result);
+      return result;
+    }
+  } catch (err) {
+    console.error(`FMP news fetch error for ${normalizedTicker}:`, err.message);
   }
 
   return [];

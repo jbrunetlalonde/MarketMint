@@ -47,7 +47,7 @@
 	let editNotes = $state('');
 
 	// Portfolio summary calculations
-	const portfolioSummary = $derived(() => {
+	const portfolioSummary = $derived.by(() => {
 		let totalCost = 0;
 		let totalValue = 0;
 
@@ -265,19 +265,19 @@
 				<div class="summary-cards">
 					<div class="summary-card">
 						<span class="summary-label">Total Cost</span>
-						<span class="summary-value">{formatCurrency(portfolioSummary().totalCost)}</span>
+						<span class="summary-value">{formatCurrency(portfolioSummary.totalCost)}</span>
 					</div>
 					<div class="summary-card">
 						<span class="summary-label">Market Value</span>
-						<span class="summary-value">{formatCurrency(portfolioSummary().totalValue)}</span>
+						<span class="summary-value">{formatCurrency(portfolioSummary.totalValue)}</span>
 					</div>
 					<div class="summary-card">
 						<span class="summary-label">Total P&L</span>
 						<span
-							class="summary-value {portfolioSummary().totalGain >= 0 ? 'price-positive' : 'price-negative'}"
+							class="summary-value {portfolioSummary.totalGain >= 0 ? 'price-positive' : 'price-negative'}"
 						>
-							{portfolioSummary().totalGain >= 0 ? '+' : ''}{formatCurrency(portfolioSummary().totalGain)}
-							({portfolioSummary().totalGainPercent >= 0 ? '+' : ''}{formatPercent(portfolioSummary().totalGainPercent)})
+							{portfolioSummary.totalGain >= 0 ? '+' : ''}{formatCurrency(portfolioSummary.totalGain)}
+							({portfolioSummary.totalGainPercent >= 0 ? '+' : ''}{formatPercent(portfolioSummary.totalGainPercent)})
 						</span>
 					</div>
 				</div>

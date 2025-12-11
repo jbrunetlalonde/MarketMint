@@ -32,7 +32,11 @@ import tradingIdeasRoutes from './routes/tradingIdeas.js';
 import searchRoutes from './routes/search.js';
 import portfolioRoutes from './routes/portfolio.js';
 import insiderRoutes from './routes/insider.js';
+import screenerRoutes from './routes/screener.js';
+import analysisRoutes from './routes/analysis.js';
+import technicalsRoutes from './routes/technicals.js';
 import { initializeScheduler } from './services/scheduler.js';
+import { warmCachesWithDelay } from './services/cacheWarmer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -127,6 +131,10 @@ app.use('/api/ideas', tradingIdeasRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/insider', insiderRoutes);
+app.use('/api/screener', screenerRoutes);
+app.use('/api/analysis', analysisRoutes);
+app.use('/api/technicals', technicalsRoutes);
+
 // Serve portraits with aggressive caching (1 year) - images are pre-generated and static
 app.use('/portraits', express.static(path.join(__dirname, '../portraits'), {
   maxAge: '1y',
@@ -176,6 +184,10 @@ async function startServer() {
   // Initialize scheduler for newsletter and data refresh jobs
   if (config.nodeEnv !== 'test') {
     initializeScheduler();
+    // Warm caches after server starts (non-blocking)
+    warmCachesWithDelay(3000).catch(err => {
+      logger.warn('Cache warming failed', { error: err.message });
+    });
   }
 
   server.listen(config.port, () => {
