@@ -140,15 +140,12 @@
 				</div>
 			{/each}
 		</div>
-		<a href="/economic" class="view-all-link">View All IPOs</a>
 	{/if}
 </div>
 
 <style>
 	.ipo-calendar {
-		background: var(--color-paper);
-		border: 1px solid var(--color-border);
-		padding: 0.75rem;
+		/* Container styles */
 	}
 
 	.loading-state {
@@ -244,25 +241,6 @@
 
 	.ipo-cap {
 		color: var(--color-ink-muted);
-	}
-
-	.view-all-link {
-		display: block;
-		margin-top: 0.75rem;
-		padding-top: 0.75rem;
-		border-top: 1px solid var(--color-border);
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: var(--color-ink);
-		text-decoration: none;
-		text-align: center;
-	}
-
-	.view-all-link:hover {
-		text-decoration: underline;
 	}
 
 	.ipo-filings {

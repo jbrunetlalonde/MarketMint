@@ -426,8 +426,8 @@
 	.compact .search-dropdown {
 		border-radius: 0.25rem;
 		min-width: 280px;
-		left: auto;
-		right: 0;
+		left: 0;
+		right: auto;
 	}
 
 	.compact .search-result {

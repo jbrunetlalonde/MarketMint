@@ -4,6 +4,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import SearchAutocomplete from '$lib/components/SearchAutocomplete.svelte';
 	import api from '$lib/utils/api';
+	import { getCompanyLogoUrl } from '$lib/utils/urls';
 
 	interface Holding {
 		id: string;
@@ -50,19 +51,66 @@
 	const portfolioSummary = $derived.by(() => {
 		let totalCost = 0;
 		let totalValue = 0;
+		let dayChange = 0;
 
 		for (const holding of holdings) {
 			const quote = quotes[holding.ticker];
 			totalCost += holding.shares * holding.costBasis;
 			if (quote) {
 				totalValue += holding.shares * quote.price;
+				dayChange += holding.shares * quote.change;
 			}
 		}
 
 		const totalGain = totalValue - totalCost;
 		const totalGainPercent = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
+		const dayChangePercent = totalValue > 0 ? (dayChange / (totalValue - dayChange)) * 100 : 0;
 
-		return { totalCost, totalValue, totalGain, totalGainPercent };
+		return { totalCost, totalValue, totalGain, totalGainPercent, dayChange, dayChangePercent };
+	});
+
+	// Portfolio allocation calculations
+	const allocations = $derived.by(() => {
+		if (portfolioSummary.totalValue <= 0) return [];
+
+		const allocList = holdings.map((h) => {
+			const quote = quotes[h.ticker];
+			const value = quote ? h.shares * quote.price : 0;
+			const percent = (value / portfolioSummary.totalValue) * 100;
+			return { ticker: h.ticker, value, percent };
+		});
+
+		return allocList.sort((a, b) => b.percent - a.percent);
+	});
+
+	// Top allocation for chart (top 5 + other)
+	const topAllocations = $derived.by(() => {
+		if (allocations.length <= 6) return allocations;
+
+		const top5 = allocations.slice(0, 5);
+		const otherPercent = allocations.slice(5).reduce((sum, a) => sum + a.percent, 0);
+		const otherValue = allocations.slice(5).reduce((sum, a) => sum + a.value, 0);
+
+		return [...top5, { ticker: 'Other', value: otherValue, percent: otherPercent }];
+	});
+
+	// Performance insights
+	const performers = $derived.by(() => {
+		const withGains = holdings
+			.map((h) => {
+				const quote = quotes[h.ticker];
+				if (!quote) return null;
+				const gainPercent = ((quote.price - h.costBasis) / h.costBasis) * 100;
+				return { ticker: h.ticker, gainPercent };
+			})
+			.filter((x): x is { ticker: string; gainPercent: number } => x !== null);
+
+		const sorted = [...withGains].sort((a, b) => b.gainPercent - a.gainPercent);
+
+		return {
+			top: sorted.slice(0, 3),
+			bottom: sorted.length > 3 ? sorted.slice(-3).reverse() : []
+		};
 	});
 
 	async function loadPortfolio() {
@@ -253,20 +301,15 @@
 		<h1 class="headline headline-xl">Portfolio Holdings</h1>
 
 		{#if !auth.isAuthenticated}
-			<div class="card mt-4">
+			<div class="portfolio-card">
 				<p class="text-center py-8">
-					<a href="/auth/login" class="underline font-semibold">Sign in</a> to track your portfolio
-					holdings.
+					<a href="/auth/login" class="auth-link">Sign in</a> to track your portfolio holdings.
 				</p>
 			</div>
 		{:else}
 			<!-- Portfolio Summary -->
 			{#if holdings.length > 0}
 				<div class="summary-cards">
-					<div class="summary-card">
-						<span class="summary-label">Total Cost</span>
-						<span class="summary-value">{formatCurrency(portfolioSummary.totalCost)}</span>
-					</div>
 					<div class="summary-card">
 						<span class="summary-label">Market Value</span>
 						<span class="summary-value">{formatCurrency(portfolioSummary.totalValue)}</span>
@@ -277,14 +320,32 @@
 							class="summary-value {portfolioSummary.totalGain >= 0 ? 'price-positive' : 'price-negative'}"
 						>
 							{portfolioSummary.totalGain >= 0 ? '+' : ''}{formatCurrency(portfolioSummary.totalGain)}
-							({portfolioSummary.totalGainPercent >= 0 ? '+' : ''}{formatPercent(portfolioSummary.totalGainPercent)})
+							<span class="summary-subtext">
+								({portfolioSummary.totalGainPercent >= 0 ? '+' : ''}{formatPercent(portfolioSummary.totalGainPercent)})
+							</span>
 						</span>
+					</div>
+					<div class="summary-card">
+						<span class="summary-label">Day's Change</span>
+						<span
+							class="summary-value {portfolioSummary.dayChange >= 0 ? 'price-positive' : 'price-negative'}"
+						>
+							{portfolioSummary.dayChange >= 0 ? '+' : ''}{formatCurrency(portfolioSummary.dayChange)}
+							<span class="summary-subtext">
+								({portfolioSummary.dayChangePercent >= 0 ? '+' : ''}{formatPercent(portfolioSummary.dayChangePercent)})
+							</span>
+						</span>
+					</div>
+					<div class="summary-card">
+						<span class="summary-label">Holdings</span>
+						<span class="summary-value">{holdings.length}</span>
+						<span class="summary-subtext">positions</span>
 					</div>
 				</div>
 			{/if}
 
 			<!-- Add Holding -->
-			<div class="card mt-4">
+			<div class="portfolio-card">
 				<h3 class="headline headline-md">Add Position</h3>
 
 				{#if pendingAdd}
@@ -355,29 +416,112 @@
 				{/if}
 			</div>
 
+			<!-- Allocation Chart & Performance Insights Row -->
+			{#if holdings.length > 0 && !loading}
+				<div class="insights-row">
+					<!-- Portfolio Allocation -->
+					<div class="portfolio-card insights-card">
+						<h3 class="card-title">Portfolio Allocation</h3>
+						<div class="allocation-chart">
+							{#each topAllocations as alloc (alloc.ticker)}
+								<div class="alloc-row">
+									<div class="alloc-info">
+										{#if alloc.ticker !== 'Other'}
+											<img
+												src={getCompanyLogoUrl(alloc.ticker)}
+												alt=""
+												class="alloc-logo"
+												loading="lazy"
+												onerror={(e) => {
+													(e.currentTarget as HTMLImageElement).style.display = 'none';
+												}}
+											/>
+										{/if}
+										<span class="alloc-ticker">{alloc.ticker}</span>
+									</div>
+									<div class="alloc-bar-container">
+										<div class="alloc-bar" style="width: {alloc.percent}%"></div>
+									</div>
+									<span class="alloc-percent">{alloc.percent.toFixed(1)}%</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+
+					<!-- Performance Insights -->
+					<div class="portfolio-card insights-card">
+						<h3 class="card-title">Performance Insights</h3>
+						<div class="performers-grid">
+							<div class="performer-section">
+								<h4 class="performer-title price-positive">Top Performers</h4>
+								{#if performers.top.length > 0}
+									{#each performers.top as perf, i (perf.ticker)}
+										<div class="performer-row">
+											<span class="performer-rank">{i + 1}.</span>
+											<a href="/ticker/{perf.ticker}" class="performer-ticker">{perf.ticker}</a>
+											<span class="performer-gain price-positive">
+												+{formatPercent(perf.gainPercent)}
+											</span>
+										</div>
+									{/each}
+								{:else}
+									<p class="no-performers">No data yet</p>
+								{/if}
+							</div>
+							<div class="performer-section">
+								<h4 class="performer-title price-negative">Biggest Losers</h4>
+								{#if performers.bottom.length > 0}
+									{#each performers.bottom as perf, i (perf.ticker)}
+										<div class="performer-row">
+											<span class="performer-rank">{i + 1}.</span>
+											<a href="/ticker/{perf.ticker}" class="performer-ticker">{perf.ticker}</a>
+											<span class="performer-gain price-negative">
+												{formatPercent(perf.gainPercent)}
+											</span>
+										</div>
+									{/each}
+								{:else}
+									<p class="no-performers">No losers</p>
+								{/if}
+							</div>
+						</div>
+					</div>
+				</div>
+			{/if}
+
 			<!-- Holdings Table -->
-			<div class="card mt-4">
+			<div class="portfolio-card">
+				<h3 class="card-title">Your Holdings</h3>
 				{#if loading}
-					<div class="animate-pulse space-y-3 py-4">
+					<div class="loading-skeleton">
 						{#each Array(3) as _, i (i)}
-							<div class="h-12 bg-gray-200 rounded"></div>
+							<div class="skeleton-row"></div>
 						{/each}
 					</div>
 				{:else if holdings.length === 0}
-					<p class="text-center py-8 text-ink-muted">
-						No holdings yet. Search for a stock above to add your first position.
-					</p>
+					<div class="empty-state">
+						<svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+							<path d="M3 3h18v18H3V3z" />
+							<path d="M3 9h18" />
+							<path d="M9 21V9" />
+							<path d="M12 12h3" />
+							<path d="M12 15h3" />
+						</svg>
+						<h4>Start Building Your Portfolio</h4>
+						<p>Search for a stock above to add your first position</p>
+					</div>
 				{:else}
 					<div class="table-container">
 						<table class="holdings-table">
 							<thead>
 								<tr>
 									<th>Symbol</th>
-									<th>Shares</th>
-									<th>Avg Cost</th>
+									<th class="hide-mobile">Shares</th>
+									<th class="hide-mobile">Avg Cost</th>
 									<th>Price</th>
-									<th>Value</th>
+									<th class="hide-mobile">Value</th>
 									<th>P&L</th>
+									<th class="hide-mobile">Alloc</th>
 									<th>Actions</th>
 								</tr>
 							</thead>
@@ -385,16 +529,26 @@
 								{#each holdings as holding (holding.id)}
 									{@const quote = quotes[holding.ticker]}
 									{@const gainLoss = getGainLoss(holding)}
+									{@const alloc = allocations.find((a) => a.ticker === holding.ticker)}
 									<tr>
 										<td class="col-symbol">
-											<a href="/ticker/{holding.ticker}" class="ticker-symbol">
-												{holding.ticker}
+											<a href="/ticker/{holding.ticker}" class="stock-cell">
+												<img
+													src={getCompanyLogoUrl(holding.ticker)}
+													alt=""
+													class="stock-logo"
+													loading="lazy"
+													onerror={(e) => {
+														(e.currentTarget as HTMLImageElement).style.display = 'none';
+													}}
+												/>
+												<span class="ticker-symbol">{holding.ticker}</span>
 											</a>
 											{#if holding.notes}
 												<div class="holding-notes">{holding.notes}</div>
 											{/if}
 										</td>
-										<td class="col-shares">
+										<td class="col-shares hide-mobile">
 											{#if editingId === holding.id}
 												<input
 													type="number"
@@ -407,7 +561,7 @@
 												{holding.shares.toLocaleString()}
 											{/if}
 										</td>
-										<td class="col-cost">
+										<td class="col-cost hide-mobile">
 											{#if editingId === holding.id}
 												<input
 													type="number"
@@ -428,7 +582,7 @@
 												</span>
 											{/if}
 										</td>
-										<td class="col-value">
+										<td class="col-value hide-mobile">
 											{quote ? formatCurrency(holding.shares * quote.price) : '--'}
 										</td>
 										<td class="col-pnl">
@@ -443,6 +597,9 @@
 											{:else}
 												--
 											{/if}
+										</td>
+										<td class="col-alloc hide-mobile">
+											{alloc ? alloc.percent.toFixed(1) + '%' : '--'}
 										</td>
 										<td class="col-actions">
 											{#if editingId === holding.id}
@@ -469,9 +626,41 @@
 </div>
 
 <style>
+	/* Portfolio Card - Base */
+	.portfolio-card {
+		background: var(--color-paper);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		padding: 1.25rem;
+		margin-top: 1rem;
+	}
+
+	.portfolio-card :global(.headline) {
+		border-bottom: none;
+		padding-bottom: 0;
+		margin-bottom: 1rem;
+	}
+
+	.auth-link {
+		color: var(--color-ink);
+		font-weight: 600;
+		text-decoration: underline;
+	}
+
+	.card-title {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-ink-muted);
+		margin: 0 0 1rem 0;
+	}
+
+	/* Summary Cards */
 	.summary-cards {
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
+		grid-template-columns: repeat(4, 1fr);
 		gap: 1rem;
 		margin-top: 1rem;
 	}
@@ -479,14 +668,15 @@
 	.summary-card {
 		background: var(--color-newsprint);
 		border: 1px solid var(--color-border);
+		border-radius: 10px;
 		padding: 1rem;
 		text-align: center;
 	}
 
 	.summary-label {
 		display: block;
-		font-size: 0.75rem;
-		font-weight: 500;
+		font-size: 0.6875rem;
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--color-ink-muted);
@@ -495,14 +685,23 @@
 
 	.summary-value {
 		display: block;
-		font-size: 1.25rem;
-		font-weight: 600;
+		font-size: 1.125rem;
+		font-weight: 700;
+		font-family: var(--font-mono);
 	}
 
+	.summary-subtext {
+		display: block;
+		font-size: 0.75rem;
+		font-weight: 500;
+	}
+
+	/* Add Form */
 	.add-form {
 		padding: 1rem;
 		background: var(--color-newsprint);
 		border: 1px solid var(--color-border);
+		border-radius: 6px;
 	}
 
 	.add-header {
@@ -511,6 +710,13 @@
 		gap: 0.75rem;
 		flex-wrap: wrap;
 		margin-bottom: 1rem;
+	}
+
+	.add-header .badge {
+		font-size: 0.65rem;
+		padding: 0.125rem 0.375rem;
+		background: var(--color-newsprint-dark);
+		border-radius: 4px;
 	}
 
 	.form-grid {
@@ -530,8 +736,8 @@
 	}
 
 	.form-group label {
-		font-size: 0.75rem;
-		font-weight: 500;
+		font-size: 0.6875rem;
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--color-ink-muted);
@@ -543,6 +749,194 @@
 		margin-top: 1rem;
 	}
 
+	/* Round inputs and buttons */
+	.portfolio-card :global(.input) {
+		border-radius: 6px;
+	}
+
+	.portfolio-card :global(.btn) {
+		border-radius: 6px;
+	}
+
+	/* Insights Row */
+	.insights-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+		margin-top: 1rem;
+	}
+
+	.insights-card {
+		margin-top: 0;
+	}
+
+	/* Allocation Chart */
+	.allocation-chart {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.alloc-row {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.alloc-info {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 70px;
+	}
+
+	.alloc-logo {
+		width: 20px;
+		height: 20px;
+		object-fit: contain;
+		border-radius: 4px;
+		flex-shrink: 0;
+	}
+
+	.alloc-ticker {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-ink);
+	}
+
+	.alloc-bar-container {
+		flex: 1;
+		height: 8px;
+		background: var(--color-newsprint);
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.alloc-bar {
+		height: 100%;
+		background: linear-gradient(90deg, var(--color-ink) 0%, var(--color-ink-muted) 100%);
+		border-radius: 4px;
+		transition: width 0.3s ease;
+	}
+
+	.alloc-percent {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-ink-muted);
+		min-width: 45px;
+		text-align: right;
+	}
+
+	/* Performers */
+	.performers-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1.5rem;
+	}
+
+	.performer-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.performer-title {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin: 0 0 0.25rem 0;
+	}
+
+	.performer-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.8125rem;
+	}
+
+	.performer-rank {
+		color: var(--color-ink-muted);
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		min-width: 1rem;
+	}
+
+	.performer-ticker {
+		font-family: var(--font-mono);
+		font-weight: 600;
+		color: var(--color-ink);
+		text-decoration: none;
+	}
+
+	.performer-ticker:hover {
+		text-decoration: underline;
+	}
+
+	.performer-gain {
+		font-family: var(--font-mono);
+		font-weight: 600;
+		margin-left: auto;
+	}
+
+	.no-performers {
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+		font-style: italic;
+		margin: 0;
+	}
+
+	/* Empty State */
+	.empty-state {
+		text-align: center;
+		padding: 2rem 1rem;
+	}
+
+	.empty-icon {
+		width: 48px;
+		height: 48px;
+		color: var(--color-ink-muted);
+		margin: 0 auto 1rem;
+	}
+
+	.empty-state h4 {
+		font-size: 1rem;
+		font-weight: 600;
+		margin: 0 0 0.5rem 0;
+		color: var(--color-ink);
+	}
+
+	.empty-state p {
+		font-size: 0.875rem;
+		color: var(--color-ink-muted);
+		margin: 0;
+	}
+
+	/* Loading Skeleton */
+	.loading-skeleton {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		padding: 1rem 0;
+	}
+
+	.skeleton-row {
+		height: 48px;
+		background: linear-gradient(90deg, var(--color-newsprint) 25%, var(--color-paper) 50%, var(--color-newsprint) 75%);
+		background-size: 200% 100%;
+		animation: skeleton-shimmer 1.5s infinite;
+		border-radius: 6px;
+	}
+
+	@keyframes skeleton-shimmer {
+		0% { background-position: 200% 0; }
+		100% { background-position: -200% 0; }
+	}
+
+	/* Holdings Table */
 	.table-container {
 		overflow-x: auto;
 	}
@@ -564,7 +958,7 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		font-size: 0.7rem;
+		font-size: 0.6875rem;
 		color: var(--color-ink-muted);
 		background: var(--color-newsprint);
 	}
@@ -573,11 +967,39 @@
 		background: var(--color-newsprint);
 	}
 
+	/* Stock cell with logo */
+	.stock-cell {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		text-decoration: none;
+		color: inherit;
+	}
+
+	.stock-logo {
+		width: 24px;
+		height: 24px;
+		object-fit: contain;
+		border-radius: 4px;
+		flex-shrink: 0;
+	}
+
+	.stock-cell .ticker-symbol {
+		font-family: var(--font-mono);
+		font-weight: 700;
+		color: var(--color-ink);
+	}
+
+	.stock-cell:hover .ticker-symbol {
+		text-decoration: underline;
+	}
+
 	.col-shares,
 	.col-cost,
 	.col-price,
 	.col-value,
-	.col-pnl {
+	.col-pnl,
+	.col-alloc {
 		text-align: right;
 	}
 
@@ -591,7 +1013,7 @@
 	}
 
 	.holding-notes {
-		font-size: 0.7rem;
+		font-size: 0.6875rem;
 		color: var(--color-ink-muted);
 		font-style: italic;
 		margin-top: 0.125rem;
@@ -601,11 +1023,17 @@
 		padding: 0.25rem 0.5rem;
 		font-size: 0.8rem;
 		width: 80px;
+		border-radius: 4px;
+	}
+
+	.btn-small {
+		border-radius: 4px;
 	}
 
 	.btn-danger {
 		color: var(--color-loss);
 		border-color: var(--color-loss);
+		border-radius: 4px;
 	}
 
 	.btn-danger:hover {
@@ -613,19 +1041,47 @@
 		color: white;
 	}
 
+	/* Mobile Responsive */
 	@media (max-width: 768px) {
 		.summary-cards {
+			grid-template-columns: repeat(2, 1fr);
+		}
+
+		.insights-row {
 			grid-template-columns: 1fr;
+		}
+
+		.performers-grid {
+			grid-template-columns: 1fr;
+			gap: 1rem;
 		}
 
 		.form-grid {
 			grid-template-columns: 1fr;
 		}
 
+		.hide-mobile {
+			display: none;
+		}
+
 		.holdings-table th,
 		.holdings-table td {
 			padding: 0.5rem;
 			font-size: 0.75rem;
+		}
+	}
+
+	@media (max-width: 480px) {
+		.summary-cards {
+			grid-template-columns: 1fr;
+		}
+
+		.alloc-info {
+			min-width: 50px;
+		}
+
+		.alloc-percent {
+			min-width: 35px;
 		}
 	}
 </style>

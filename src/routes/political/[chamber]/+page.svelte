@@ -39,6 +39,7 @@
 	let filterType = $state('all');
 	let filterTicker = $state('');
 	let filterMember = $state('');
+	let filterDateRange = $state('all');
 	let viewMode = $state<'table' | 'cards'>('cards');
 	let lastUpdated = $state<Date | null>(null);
 
@@ -50,6 +51,31 @@
 		if (!title) return false;
 		const lower = title.toLowerCase();
 		return config.titleFilter.some((filter) => lower.includes(filter));
+	}
+
+	function isWithinDateRange(dateStr: string): boolean {
+		if (filterDateRange === 'all') return true;
+		const date = new Date(dateStr);
+		const now = new Date();
+		const days = parseInt(filterDateRange);
+		const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+		return date >= cutoff;
+	}
+
+	const activeFilterCount = $derived(
+		(filterParty !== 'all' ? 1 : 0) +
+		(filterType !== 'all' ? 1 : 0) +
+		(filterTicker.trim() ? 1 : 0) +
+		(filterMember.trim() ? 1 : 0) +
+		(filterDateRange !== 'all' ? 1 : 0)
+	);
+
+	function clearAllFilters() {
+		filterParty = 'all';
+		filterType = 'all';
+		filterTicker = '';
+		filterMember = '';
+		filterDateRange = 'all';
 	}
 
 	const filteredTrades = $derived.by(() => {
@@ -78,6 +104,10 @@
 			result = result.filter((t) => t.officialName.toLowerCase().includes(search));
 		}
 
+		if (filterDateRange !== 'all') {
+			result = result.filter((t) => isWithinDateRange(t.transactionDate));
+		}
+
 		return result;
 	});
 
@@ -87,6 +117,7 @@
 
 		const buyCount = chamberTrades.filter((t) => t.transactionType === 'BUY').length;
 		const sellCount = chamberTrades.filter((t) => t.transactionType === 'SELL').length;
+		const buyRatio = chamberTrades.length > 0 ? Math.round((buyCount / chamberTrades.length) * 100) : 0;
 
 		const topTraders: Record<string, number> = {};
 		chamberTrades.forEach((t) => {
@@ -110,10 +141,19 @@
 			totalTrades: chamberTrades.length,
 			buyCount,
 			sellCount,
+			buyRatio,
 			topTraders: sortedTraders,
 			topStocks: sortedStocks
 		};
 	});
+
+	function filterByMember(name: string) {
+		filterMember = name;
+	}
+
+	function filterByTicker(ticker: string) {
+		filterTicker = ticker;
+	}
 
 	async function fetchTrades(append = false) {
 		if (append) {
@@ -168,277 +208,831 @@
 	<title>{config.chamber === 'house' ? 'House' : 'Senate'} Trades - MarketMint</title>
 </svelte:head>
 
-<div class="newspaper-grid">
-	<section class="col-span-full">
-		<h1 class="headline headline-xl">{config.pageTitle}</h1>
-		<p class="text-ink-muted mt-2">{config.description}</p>
-	</section>
+<div class="chamber-page">
+	<header class="page-header">
+		<h1 class="page-title">{config.pageTitle}</h1>
+		<p class="page-subtitle">{config.description}</p>
+	</header>
 
-	{#if stats}
-		<section class="col-span-4">
-			<div class="card">
-				<h2 class="headline headline-md mb-4">{config.chamber === 'house' ? 'House' : 'Senate'} Stats</h2>
-				<div class="stats-grid">
-					<div class="stat-box">
-						<p class="text-2xl font-bold">{stats.totalTrades}</p>
-						<p class="text-xs text-ink-muted">Total Trades</p>
+	<div class="content-grid">
+		{#if stats}
+			<aside class="sidebar">
+				<div class="sidebar-card">
+					<h2 class="sidebar-title">{config.chamber === 'house' ? 'House' : 'Senate'} Stats</h2>
+					<div class="stats-grid">
+						<div class="stat-box">
+							<p class="stat-value">{stats.totalTrades}</p>
+							<p class="stat-label">Total</p>
+						</div>
+						<div class="stat-box stat-buy">
+							<p class="stat-value">{stats.buyCount}</p>
+							<p class="stat-label">Buys</p>
+						</div>
+						<div class="stat-box stat-sell">
+							<p class="stat-value">{stats.sellCount}</p>
+							<p class="stat-label">Sells</p>
+						</div>
 					</div>
-					<div class="stat-box">
-						<p class="text-2xl font-bold text-emerald-600">{stats.buyCount}</p>
-						<p class="text-xs text-ink-muted">Buys</p>
+
+					<div class="ratio-bar">
+						<div class="ratio-fill" style="width: {stats.buyRatio}%"></div>
 					</div>
-					<div class="stat-box">
-						<p class="text-2xl font-bold text-red-600">{stats.sellCount}</p>
-						<p class="text-xs text-ink-muted">Sells</p>
+					<p class="ratio-label">{stats.buyRatio}% buying activity</p>
+
+					{#if stats.topTraders.length > 0}
+						<h3 class="section-label">Most Active {config.titlePlural}</h3>
+						<div class="stat-list">
+							{#each stats.topTraders as [name, count] (name)}
+								<button
+									type="button"
+									onclick={() => filterByMember(name)}
+									class="stat-row"
+								>
+									<span class="stat-name">{name}</span>
+									<span class="stat-count">{count}</span>
+								</button>
+							{/each}
+						</div>
+					{/if}
+
+					{#if stats.topStocks.length > 0}
+						<h3 class="section-label">Most Traded Stocks</h3>
+						<div class="stat-list">
+							{#each stats.topStocks as [ticker, count] (ticker)}
+								<button
+									type="button"
+									onclick={() => filterByTicker(ticker)}
+									class="stat-row"
+								>
+									<span class="ticker-symbol">{ticker}</span>
+									<span class="stat-count">{count}</span>
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			</aside>
+		{/if}
+
+		<main class={stats ? 'main-content' : 'main-content-full'}>
+			<div class="filter-card">
+				<div class="filter-header">
+					<span class="filter-title">
+						Filters
+						{#if activeFilterCount > 0}
+							<span class="filter-count">{activeFilterCount}</span>
+						{/if}
+					</span>
+					{#if activeFilterCount > 0}
+						<button type="button" onclick={clearAllFilters} class="clear-filters">
+							Clear all
+						</button>
+					{/if}
+				</div>
+				<div class="filter-grid">
+					<div class="filter-field">
+						<label for="filter-member" class="filter-label">Member</label>
+						<input
+							type="text"
+							id="filter-member"
+							bind:value={filterMember}
+							placeholder="Search name..."
+							class="filter-input"
+						/>
+					</div>
+					<div class="filter-field">
+						<label for="filter-party" class="filter-label">Party</label>
+						<select id="filter-party" bind:value={filterParty} class="filter-input">
+							<option value="all">All</option>
+							<option value="D">Democrat</option>
+							<option value="R">Republican</option>
+						</select>
+					</div>
+					<div class="filter-field">
+						<label for="filter-type" class="filter-label">Type</label>
+						<select id="filter-type" bind:value={filterType} class="filter-input">
+							<option value="all">All</option>
+							<option value="BUY">Buy</option>
+							<option value="SELL">Sell</option>
+						</select>
+					</div>
+					<div class="filter-field">
+						<label for="filter-ticker" class="filter-label">Ticker</label>
+						<input
+							type="text"
+							id="filter-ticker"
+							bind:value={filterTicker}
+							placeholder="AAPL..."
+							class="filter-input"
+						/>
+					</div>
+					<div class="filter-field">
+						<label for="filter-date" class="filter-label">Date Range</label>
+						<select id="filter-date" bind:value={filterDateRange} class="filter-input">
+							<option value="all">All Time</option>
+							<option value="7">Last 7 days</option>
+							<option value="30">Last 30 days</option>
+							<option value="90">Last 90 days</option>
+						</select>
 					</div>
 				</div>
-
-				{#if stats.topTraders.length > 0}
-					<h3 class="byline mt-4 mb-2">Most Active {config.titlePlural}</h3>
-					<div class="space-y-1">
-						{#each stats.topTraders as [name, count] (name)}
-							<a
-								href="/political/member/{encodeURIComponent(name)}"
-								class="stat-row"
-							>
-								<span class="text-sm truncate">{name}</span>
-								<span class="badge">{count}</span>
-							</a>
-						{/each}
+				<div class="filter-footer">
+					<div class="view-toggle">
+						<button
+							type="button"
+							onclick={() => (viewMode = 'cards')}
+							class="view-btn"
+							class:active={viewMode === 'cards'}
+						>
+							Cards
+						</button>
+						<button
+							type="button"
+							onclick={() => (viewMode = 'table')}
+							class="view-btn"
+							class:active={viewMode === 'table'}
+						>
+							Table
+						</button>
+					</div>
+					<button type="button" onclick={() => fetchTrades()} class="refresh-btn" disabled={loading}>
+						{loading ? 'Loading...' : 'Refresh'}
+					</button>
+				</div>
+				{#if lastUpdated}
+					<div class="last-updated">
+						Updated {lastUpdated.toLocaleTimeString()}
 					</div>
 				{/if}
+			</div>
 
-				{#if stats.topStocks.length > 0}
-					<h3 class="byline mt-4 mb-2">Most Traded Stocks</h3>
-					<div class="space-y-1">
-						{#each stats.topStocks as [ticker, count] (ticker)}
-							<a
-								href="/ticker/{ticker}"
-								class="stat-row"
-							>
-								<span class="ticker-symbol">{ticker}</span>
-								<span class="badge">{count}</span>
-							</a>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		</section>
-	{/if}
-
-	<section class={stats ? 'col-span-8' : 'col-span-full'}>
-		<div class="card mb-4">
-			<div class="flex gap-4 flex-wrap items-end">
-				<div>
-					<label for="filter-member" class="byline block mb-1">Member Name</label>
-					<input
-						type="text"
-						id="filter-member"
-						bind:value={filterMember}
-						placeholder="Search by name..."
-						class="input"
-					/>
+			{#if loading && trades.length === 0}
+				<div class="empty-state">
+					<p>Loading {config.chamber === 'house' ? 'House' : 'Senate'} trades...</p>
 				</div>
-				<div>
-					<label for="filter-party" class="byline block mb-1">Party</label>
-					<select id="filter-party" bind:value={filterParty} class="input">
-						<option value="all">All Parties</option>
-						<option value="D">Democrat</option>
-						<option value="R">Republican</option>
-					</select>
+			{:else if error}
+				<div class="empty-state">
+					<p class="error-text">{error}</p>
+					<button type="button" onclick={() => fetchTrades()} class="retry-btn">Try Again</button>
 				</div>
-				<div>
-					<label for="filter-type" class="byline block mb-1">Transaction Type</label>
-					<select id="filter-type" bind:value={filterType} class="input">
-						<option value="all">All Types</option>
-						<option value="BUY">Buy</option>
-						<option value="SELL">Sell</option>
-					</select>
+			{:else if filteredTrades.length === 0}
+				<div class="empty-state">
+					<p>No trades found matching your filters.</p>
+					{#if activeFilterCount > 0}
+						<button type="button" onclick={clearAllFilters} class="retry-btn">Clear Filters</button>
+					{/if}
 				</div>
-				<div>
-					<label for="filter-ticker" class="byline block mb-1">Ticker</label>
-					<input
-						type="text"
-						id="filter-ticker"
-						bind:value={filterTicker}
-						placeholder="Search ticker..."
-						class="input"
-					/>
+			{:else if viewMode === 'cards'}
+				<div class="trades-list">
+					{#each filteredTrades as trade (trade.id)}
+						<PoliticalTradeCard {trade} />
+					{/each}
 				</div>
-				<button onclick={() => fetchTrades()} class="btn btn-secondary" disabled={loading}>
-					{loading ? 'Loading...' : 'Refresh'}
-				</button>
-
-				<div class="ml-auto flex gap-1">
-					<button
-						onclick={() => (viewMode = 'table')}
-						class="btn btn-sm {viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}"
-						title="Table view"
-					>
-						Table
-					</button>
-					<button
-						onclick={() => (viewMode = 'cards')}
-						class="btn btn-sm {viewMode === 'cards' ? 'btn-primary' : 'btn-ghost'}"
-						title="Card view"
-					>
-						Cards
-					</button>
-				</div>
-			</div>
-			{#if lastUpdated}
-				<div class="text-xs text-ink-muted mt-3 pt-3 border-t border-ink-light">
-					Last updated: {lastUpdated.toLocaleTimeString()} ({lastUpdated.toLocaleDateString()})
-				</div>
-			{/if}
-		</div>
-
-		{#if loading && trades.length === 0}
-			<div class="card text-center py-8">
-				<p class="text-ink-muted">Loading {config.chamber === 'house' ? 'House' : 'Senate'} trades...</p>
-			</div>
-		{:else if error}
-			<div class="card text-center py-8">
-				<p class="text-red-600 mb-4">{error}</p>
-				<button onclick={fetchTrades} class="btn btn-primary">Try Again</button>
-			</div>
-		{:else if filteredTrades.length === 0}
-			<div class="card text-center py-8">
-				<p class="text-ink-muted">No {config.chamber === 'house' ? 'House' : 'Senate'} trades found matching your filters.</p>
-			</div>
-		{:else if viewMode === 'cards'}
-			<div class="grid gap-4 md:grid-cols-2">
-				{#each filteredTrades as trade (trade.id)}
-					<PoliticalTradeCard {trade} />
-				{/each}
-			</div>
-		{:else}
-			<div class="card overflow-x-auto">
-				<table class="data-table">
-					<thead>
-						<tr>
-							<th>{config.title}</th>
-							<th>Ticker</th>
-							<th>Type</th>
-							<th>Amount</th>
-							<th>Transaction</th>
-							<th>Reported</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each filteredTrades as trade (trade.id)}
+			{:else}
+				<div class="table-container">
+					<table class="data-table">
+						<thead>
 							<tr>
-								<td>
-									<div class="flex items-center gap-3">
-										<img
-											src={getPortraitUrl(trade.officialName)}
-											alt={trade.officialName}
-											class="w-10 h-12 object-contain border border-ink-light bg-newsprint flex-shrink-0"
-											loading="lazy"
-											decoding="async"
-											onerror={(e) => {
-												const img = e.currentTarget as HTMLImageElement;
-												img.onerror = null;
-												img.src = getAvatarFallback(trade.officialName);
-											}}
-										/>
-										<div>
-											<a href="/political/member/{encodeURIComponent(trade.officialName)}" class="font-semibold hover:underline">{trade.officialName}</a>
-											<div class="text-xs text-ink-muted">
-												{getPartyAbbrev(trade.party)}{#if trade.state}-{trade.state}{/if}
+								<th>{config.title}</th>
+								<th>Ticker</th>
+								<th>Type</th>
+								<th>Amount</th>
+								<th>Transaction</th>
+								<th>Reported</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each filteredTrades as trade (trade.id)}
+								<tr>
+									<td>
+										<div class="table-member">
+											<img
+												src={getPortraitUrl(trade.officialName)}
+												alt={trade.officialName}
+												class="table-portrait"
+												loading="lazy"
+												decoding="async"
+												onerror={(e) => {
+													const img = e.currentTarget as HTMLImageElement;
+													img.onerror = null;
+													img.src = getAvatarFallback(trade.officialName);
+												}}
+											/>
+											<div>
+												<a href="/political/member/{encodeURIComponent(trade.officialName)}" class="table-name">{trade.officialName}</a>
+												<div class="table-meta">
+													{getPartyAbbrev(trade.party)}{#if trade.state}-{trade.state}{/if}
+												</div>
 											</div>
 										</div>
-									</div>
-								</td>
-								<td>
-									<a href="/ticker/{trade.ticker}" class="ticker-symbol">
-										{trade.ticker}
-									</a>
-								</td>
-								<td>
-									<span
-										class={trade.transactionType === 'BUY'
-											? 'badge badge-gain'
-											: trade.transactionType === 'SELL'
-												? 'badge badge-loss'
-												: 'badge'}
-									>
-										{trade.transactionType}
-									</span>
-								</td>
-								<td class="font-semibold whitespace-nowrap">{trade.amountDisplay}</td>
-								<td class="whitespace-nowrap">
-									{trade.transactionDate ? formatDate(trade.transactionDate) : '-'}
-								</td>
-								<td class="text-ink-muted whitespace-nowrap">
-									{trade.reportedDate ? formatDate(trade.reportedDate) : '-'}
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		{/if}
+									</td>
+									<td>
+										<a href="/ticker/{trade.ticker}" class="ticker-link">
+											{trade.ticker}
+										</a>
+									</td>
+									<td>
+										<span class="type-badge" class:buy={trade.transactionType === 'BUY'} class:sell={trade.transactionType === 'SELL'}>
+											{trade.transactionType}
+										</span>
+									</td>
+									<td class="amount-cell">{trade.amountDisplay}</td>
+									<td class="date-cell">
+										{trade.transactionDate ? formatDate(trade.transactionDate) : '-'}
+									</td>
+									<td class="date-cell muted">
+										{trade.reportedDate ? formatDate(trade.reportedDate) : '-'}
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
 
-		{#if hasMore && filteredTrades.length > 0}
-			<div class="text-center mt-6">
-				<button
-					onclick={loadMore}
-					class="btn btn-primary"
-					disabled={loadingMore}
-				>
-					{loadingMore ? 'Loading...' : 'Load More Trades'}
-				</button>
-				<p class="text-xs text-ink-muted mt-2">
-					Showing {filteredTrades.length} trades
-				</p>
-			</div>
-		{/if}
-	</section>
-
+			{#if hasMore && filteredTrades.length > 0}
+				<div class="load-more">
+					<button type="button" onclick={loadMore} class="load-more-btn" disabled={loadingMore}>
+						{loadingMore ? 'Loading...' : 'Load More Trades'}
+					</button>
+					<p class="results-count">Showing {filteredTrades.length} trades</p>
+				</div>
+			{/if}
+		</main>
+	</div>
 </div>
 
 <style>
+	.chamber-page {
+		max-width: 1400px;
+		margin: 0 auto;
+		padding: 2rem 1rem;
+		font-family: var(--font-mono);
+	}
+
+	.page-header {
+		margin-bottom: 1.5rem;
+	}
+
+	.page-title {
+		font-size: 1.75rem;
+		font-weight: 700;
+		margin: 0;
+		color: var(--color-ink);
+	}
+
+	.page-subtitle {
+		font-size: 0.875rem;
+		color: var(--color-ink-muted);
+		margin: 0.5rem 0 0;
+	}
+
+	.content-grid {
+		display: grid;
+		grid-template-columns: 320px 1fr;
+		gap: 1.5rem;
+		align-items: start;
+	}
+
+	.sidebar {
+		position: sticky;
+		top: 1rem;
+	}
+
+	.sidebar-card {
+		background: var(--color-paper);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		padding: 1.25rem;
+	}
+
+	.sidebar-title {
+		font-size: 1rem;
+		font-weight: 700;
+		margin: 0 0 1rem;
+		color: var(--color-ink);
+	}
+
 	.stats-grid {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		gap: 1rem;
+		gap: 0.5rem;
+		margin-bottom: 1rem;
 	}
 
 	.stat-box {
 		text-align: center;
-		padding: 0.75rem;
-		background-color: var(--color-newsprint-dark, #e0e0d8);
-		border: 1px solid var(--color-border, #aaa);
+		padding: 0.75rem 0.5rem;
+		background: var(--color-newsprint);
+		border-radius: 6px;
 	}
 
-	[data-theme="dark"] .stat-box {
-		background-color: var(--color-newsprint-dark, #1e1e1e);
-		border-color: var(--color-border, #3d3d3d);
+	.stat-box.stat-buy .stat-value {
+		color: #047857;
+	}
+
+	.stat-box.stat-sell .stat-value {
+		color: #b91c1c;
+	}
+
+	:global([data-theme='dark']) .stat-box.stat-buy .stat-value {
+		color: #6ee7b7;
+	}
+
+	:global([data-theme='dark']) .stat-box.stat-sell .stat-value {
+		color: #fca5a5;
+	}
+
+	.stat-value {
+		font-size: 1.25rem;
+		font-weight: 700;
+		color: var(--color-ink);
+		margin: 0;
+	}
+
+	.stat-label {
+		font-size: 0.6875rem;
+		color: var(--color-ink-muted);
+		margin: 0.125rem 0 0;
+	}
+
+	.ratio-bar {
+		height: 6px;
+		background: #fee2e2;
+		border-radius: 3px;
+		overflow: hidden;
+		margin: 0.75rem 0 0.375rem;
+	}
+
+	:global([data-theme='dark']) .ratio-bar {
+		background: #450a0a;
+	}
+
+	.ratio-fill {
+		height: 100%;
+		background: #047857;
+		border-radius: 3px;
+	}
+
+	:global([data-theme='dark']) .ratio-fill {
+		background: #6ee7b7;
+	}
+
+	.ratio-label {
+		font-size: 0.6875rem;
+		color: var(--color-ink-muted);
+		text-align: center;
+		margin: 0;
+	}
+
+	.section-label {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-ink-muted);
+		margin: 1.25rem 0 0.5rem;
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
+	}
+
+	.stat-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
 	}
 
 	.stat-row {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0.5rem;
-		background-color: var(--color-newsprint-dark, #e0e0d8);
-		border: 1px solid var(--color-border, #aaa);
-		text-decoration: none;
-		color: inherit;
+		padding: 0.5rem 0.625rem;
+		background: var(--color-newsprint);
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		text-align: left;
+		font-family: inherit;
 		transition: background-color 0.15s;
+		width: 100%;
 	}
 
 	.stat-row:hover {
-		background-color: var(--color-newsprint, #f5f5f0);
+		background: var(--color-newsprint-dark);
 	}
 
-	[data-theme="dark"] .stat-row {
-		background-color: var(--color-newsprint-dark, #1e1e1e);
-		border-color: var(--color-border, #3d3d3d);
+	.stat-name {
+		font-size: 0.8125rem;
+		color: var(--color-ink);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 180px;
 	}
 
-	[data-theme="dark"] .stat-row:hover {
-		background-color: #2a2a2a;
+	.ticker-symbol {
+		font-size: 0.8125rem;
+		font-weight: 700;
+		color: var(--color-ink);
+	}
+
+	.stat-count {
+		font-size: 0.75rem;
+		font-weight: 600;
+		background: var(--color-paper);
+		border: 1px solid var(--color-border);
+		padding: 0.125rem 0.5rem;
+		border-radius: 3px;
+		color: var(--color-ink-muted);
+	}
+
+	.main-content {
+		min-width: 0;
+	}
+
+	.main-content-full {
+		grid-column: 1 / -1;
+	}
+
+	.filter-card {
+		background: var(--color-paper);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		padding: 1rem 1.25rem;
+		margin-bottom: 1rem;
+	}
+
+	.filter-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 0.875rem;
+	}
+
+	.filter-title {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--color-ink);
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.filter-count {
+		font-size: 0.6875rem;
+		font-weight: 700;
+		background: var(--color-ink);
+		color: var(--color-paper);
+		padding: 0.125rem 0.375rem;
+		border-radius: 3px;
+	}
+
+	.clear-filters {
+		font-family: inherit;
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+		background: none;
+		border: none;
+		cursor: pointer;
+		text-decoration: underline;
+	}
+
+	.clear-filters:hover {
+		color: var(--color-ink);
+	}
+
+	.filter-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+		gap: 0.75rem;
+	}
+
+	.filter-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.filter-label {
+		font-size: 0.6875rem;
+		font-weight: 600;
+		color: var(--color-ink-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
+	}
+
+	.filter-input {
+		font-family: inherit;
+		font-size: 0.8125rem;
+		padding: 0.5rem 0.625rem;
+		background: var(--color-newsprint);
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		color: var(--color-ink);
+	}
+
+	.filter-input:focus {
+		outline: none;
+		border-color: var(--color-ink-muted);
+	}
+
+	.filter-footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-top: 1rem;
+		padding-top: 0.875rem;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.view-toggle {
+		display: flex;
+		gap: 0.25rem;
+		background: var(--color-newsprint);
+		padding: 0.25rem;
+		border-radius: 6px;
+	}
+
+	.view-btn {
+		font-family: inherit;
+		font-size: 0.75rem;
+		font-weight: 500;
+		padding: 0.375rem 0.75rem;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		color: var(--color-ink-muted);
+		transition: all 0.15s;
+	}
+
+	.view-btn.active {
+		background: var(--color-paper);
+		color: var(--color-ink);
+		box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+	}
+
+	.refresh-btn {
+		font-family: inherit;
+		font-size: 0.75rem;
+		font-weight: 600;
+		padding: 0.5rem 1rem;
+		background: var(--color-ink);
+		color: var(--color-paper);
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.refresh-btn:hover:not(:disabled) {
+		background: var(--color-ink-light);
+	}
+
+	.refresh-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.last-updated {
+		font-size: 0.6875rem;
+		color: var(--color-ink-muted);
+		margin-top: 0.75rem;
+		text-align: right;
+	}
+
+	.empty-state {
+		background: var(--color-paper);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		padding: 3rem 1rem;
+		text-align: center;
+		color: var(--color-ink-muted);
+	}
+
+	.empty-state .error-text {
+		color: var(--color-loss);
+		margin-bottom: 1rem;
+	}
+
+	.retry-btn {
+		font-family: inherit;
+		font-size: 0.8125rem;
+		padding: 0.5rem 1.25rem;
+		background: var(--color-ink);
+		color: var(--color-paper);
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		margin-top: 0.75rem;
+	}
+
+	.trades-list {
+		background: var(--color-paper);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		overflow: hidden;
+	}
+
+	.trades-list :global(.trade-card:first-child) {
+		border-top: none;
+	}
+
+	.trades-list :global(.trade-card:last-child) {
+		border-bottom: none;
+	}
+
+	.table-container {
+		background: var(--color-paper);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		overflow: hidden;
+	}
+
+	.data-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.8125rem;
+	}
+
+	.data-table th {
+		text-align: left;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
+		color: var(--color-ink-muted);
+		padding: 0.875rem 1rem;
+		background: var(--color-newsprint);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.data-table td {
+		padding: 0.75rem 1rem;
+		border-bottom: 1px solid var(--color-border);
+		vertical-align: middle;
+	}
+
+	.data-table tr:last-child td {
+		border-bottom: none;
+	}
+
+	.data-table tr:hover td {
+		background: var(--color-newsprint);
+	}
+
+	.table-member {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.table-portrait {
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		object-fit: cover;
+		object-position: top;
+		background: var(--color-newsprint);
+		border: 2px solid var(--color-border);
+		flex-shrink: 0;
+	}
+
+	.table-name {
+		font-weight: 600;
+		color: var(--color-ink);
+		text-decoration: none;
+	}
+
+	.table-name:hover {
+		text-decoration: underline;
+	}
+
+	.table-meta {
+		font-size: 0.6875rem;
+		color: var(--color-ink-muted);
+		margin-top: 0.125rem;
+	}
+
+	.ticker-link {
+		font-weight: 700;
+		color: var(--color-ink);
+		text-decoration: none;
+	}
+
+	.ticker-link:hover {
+		text-decoration: underline;
+	}
+
+	.type-badge {
+		font-size: 0.6875rem;
+		font-weight: 600;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		background: var(--color-newsprint-dark);
+		color: var(--color-ink-muted);
+	}
+
+	.type-badge.buy {
+		background: #d1fae5;
+		color: #047857;
+	}
+
+	.type-badge.sell {
+		background: #fee2e2;
+		color: #b91c1c;
+	}
+
+	:global([data-theme='dark']) .type-badge.buy {
+		background: #064e3b;
+		color: #6ee7b7;
+	}
+
+	:global([data-theme='dark']) .type-badge.sell {
+		background: #450a0a;
+		color: #fca5a5;
+	}
+
+	.amount-cell {
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.date-cell {
+		white-space: nowrap;
+	}
+
+	.date-cell.muted {
+		color: var(--color-ink-muted);
+	}
+
+	.load-more {
+		text-align: center;
+		margin-top: 1.5rem;
+	}
+
+	.load-more-btn {
+		font-family: inherit;
+		font-size: 0.875rem;
+		font-weight: 600;
+		padding: 0.75rem 2rem;
+		background: var(--color-ink);
+		color: var(--color-paper);
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.load-more-btn:hover:not(:disabled) {
+		background: var(--color-ink-light);
+	}
+
+	.load-more-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.results-count {
+		font-size: 0.75rem;
+		color: var(--color-ink-muted);
+		margin-top: 0.5rem;
+	}
+
+	@media (max-width: 900px) {
+		.content-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.sidebar {
+			position: static;
+			order: -1;
+		}
+
+		.filter-grid {
+			grid-template-columns: 1fr 1fr;
+		}
+	}
+
+	@media (max-width: 540px) {
+		.chamber-page {
+			padding: 1rem;
+		}
+
+		.filter-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.filter-footer {
+			flex-direction: column;
+			gap: 0.75rem;
+		}
+
+		.view-toggle {
+			width: 100%;
+			justify-content: center;
+		}
+
+		.refresh-btn {
+			width: 100%;
+		}
 	}
 </style>

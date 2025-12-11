@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { formatDate } from '$lib/utils/formatters';
 	import { getCongressPortraitUrl, getAvatarFallback, getCompanyLogoUrl } from '$lib/utils/urls';
+	import { getPartyAbbrev, getInitials } from '$lib/utils/political';
 	import api from '$lib/utils/api';
 
 	interface Trade {
@@ -47,6 +48,26 @@
 	let error = $state<string | null>(null);
 	let portraitError = $state(false);
 
+	// Stats computed from trades
+	const stats = $derived.by(() => {
+		if (allTrades.length === 0) return null;
+
+		const buyCount = allTrades.filter(t => t.transactionType === 'BUY').length;
+		const sellCount = allTrades.filter(t => t.transactionType === 'SELL').length;
+
+		const sortedByDate = [...allTrades].sort(
+			(a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
+		);
+		const lastTradeDate = sortedByDate[0]?.transactionDate || null;
+
+		return {
+			totalTrades: allTrades.length,
+			buyCount,
+			sellCount,
+			lastTradeDate
+		};
+	});
+
 	// Stocks owned at one point
 	const stocksOwned = $derived.by(() => {
 		if (allTrades.length === 0) return [];
@@ -84,12 +105,12 @@
 		return 'Representative';
 	}
 
-	function getPartyAbbrev(party?: string | null): string {
-		if (!party) return '?';
-		const p = party.toLowerCase();
-		if (p.includes('democrat')) return 'D';
-		if (p.includes('republican')) return 'R';
-		return party.charAt(0).toUpperCase();
+	function isRepublican(party: string | null): boolean {
+		return party?.toLowerCase().includes('republican') || false;
+	}
+
+	function isDemocrat(party: string | null): boolean {
+		return party?.toLowerCase().includes('democrat') || false;
 	}
 
 	async function loadData() {
@@ -158,14 +179,18 @@
 	{:else if official}
 		<!-- Page Header -->
 		<header class="page-header">
-			<a href="/political/members" class="back-link">&larr; Back to Politicians List</a>
-			<h1 class="page-title">Stock Trades Associated with {official.name}</h1>
+			<a href="/political/members" class="back-link">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="back-icon">
+					<path d="M15 18l-6-6 6-6"></path>
+				</svg>
+				Back to Politicians
+			</a>
 		</header>
 
-		<div class="main-layout">
-			<!-- Left Sidebar - Portrait & Info -->
-			<aside class="sidebar">
-				<div class="portrait-section">
+		<!-- Profile Card -->
+		<div class="profile-card">
+			<div class="profile-main">
+				<div class="portrait-wrapper">
 					{#if !portraitError}
 						<img
 							src={getPortraitUrl(official.name, official.title)}
@@ -174,125 +199,153 @@
 							onerror={() => (portraitError = true)}
 						/>
 					{:else}
-						<img
-							src={getAvatarFallback(official.name)}
-							alt={official.name}
-							class="portrait"
-						/>
-					{/if}
-				</div>
-
-				<div class="official-info">
-					<h2 class="official-name">{official.name}</h2>
-					<p class="official-title">{getTitle(official)}</p>
-					{#if official.state}
-						<p class="official-location">
-							{getPartyAbbrev(official.party)}-{official.state}
-						</p>
-					{/if}
-				</div>
-
-				<a href="/political/member/{encodeURIComponent(official.name)}/insider" class="insider-link">
-					View Insider Trades
-				</a>
-			</aside>
-
-			<!-- Main Content -->
-			<main class="content">
-				<!-- Stocks Owned at One Point -->
-				{#if stocksOwned.length > 0}
-					<section class="section stocks-section">
-						<h2 class="section-title">STOCKS OWNED AT ONE POINT</h2>
-						<div class="stocks-grid">
-							{#each stocksOwned.slice(0, 16) as stock (stock.ticker)}
-								<a href="/ticker/{stock.ticker}" class="stock-card">
-									<img
-										src={getCompanyLogoUrl(stock.ticker)}
-										alt=""
-										class="stock-logo"
-										onerror={(e) => {
-											(e.currentTarget as HTMLImageElement).style.display = 'none';
-										}}
-									/>
-									<span class="stock-ticker">{stock.ticker}</span>
-								</a>
-							{/each}
+						<div class="portrait-fallback">
+							{getInitials(official.name)}
 						</div>
-					</section>
-				{/if}
+					{/if}
+				</div>
+				<div class="profile-info">
+					<h1 class="official-name">{official.name}</h1>
+					<div class="official-meta">
+						<span class="official-title">{getTitle(official)}</span>
+						<span
+							class="party-badge"
+							class:republican={isRepublican(official.party)}
+							class:democrat={isDemocrat(official.party)}
+						>
+							{getPartyAbbrev(official.party)}
+						</span>
+						{#if official.state}
+							<span class="state">{official.state}</span>
+						{/if}
+					</div>
+				</div>
+			</div>
 
-				<!-- Trade Timeline -->
+			{#if stats}
+				<div class="stats-row">
+					<div class="stat-item">
+						<span class="stat-value">{stats.totalTrades}</span>
+						<span class="stat-label">Total Trades</span>
+					</div>
+					<div class="stat-item">
+						<span class="stat-value stat-buy">{stats.buyCount}</span>
+						<span class="stat-label">Purchases</span>
+					</div>
+					<div class="stat-item">
+						<span class="stat-value stat-sell">{stats.sellCount}</span>
+						<span class="stat-label">Sales</span>
+					</div>
+					<div class="stat-item">
+						<span class="stat-value">{stats.lastTradeDate ? formatDate(stats.lastTradeDate) : '-'}</span>
+						<span class="stat-label">Last Trade</span>
+					</div>
+				</div>
+			{/if}
+		</div>
+
+		<div class="main-content">
+			<!-- Stocks Owned -->
+			{#if stocksOwned.length > 0}
 				<section class="section">
-					<h2 class="section-title">TRADE TIMELINE</h2>
-
-					{#if allTrades.length === 0}
-						<p class="empty-message">No trades found for this official.</p>
-					{:else}
-						<div class="table-container">
-							<table class="trades-table">
-								<thead>
-									<tr>
-										<th>STOCK</th>
-										<th>TYPE</th>
-										<th>AMOUNT RANGE</th>
-										<th>DATE</th>
-									</tr>
-								</thead>
-								<tbody>
-									{#each allTrades as trade (trade.id)}
-										<tr>
-											<td>
-												<a href="/ticker/{trade.ticker}" class="stock-link">
-													<img
-														src={getCompanyLogoUrl(trade.ticker)}
-														alt=""
-														class="table-logo"
-														onerror={(e) => {
-															(e.currentTarget as HTMLImageElement).style.display = 'none';
-														}}
-													/>
-													<span class="table-ticker">{trade.ticker}</span>
-												</a>
-											</td>
-											<td>
-												<span
-													class="type-badge"
-													class:purchase={trade.transactionType === 'BUY'}
-													class:sale={trade.transactionType === 'SELL'}
-												>
-													{trade.transactionType === 'BUY' ? 'Purchase' : trade.transactionType === 'SELL' ? 'Sale' : trade.transactionType}
-												</span>
-											</td>
-											<td class="amount-cell">{trade.amountDisplay}</td>
-											<td class="date-cell">
-												{trade.transactionDate ? formatDate(trade.transactionDate) : '-'}
-											</td>
-										</tr>
-									{/each}
-								</tbody>
-							</table>
-						</div>
-					{/if}
+					<h2 class="section-title">Stocks Traded</h2>
+					<div class="stocks-grid">
+						{#each stocksOwned.slice(0, 16) as stock (stock.ticker)}
+							<a href="/ticker/{stock.ticker}" class="stock-card">
+								<img
+									src={getCompanyLogoUrl(stock.ticker)}
+									alt=""
+									class="stock-logo"
+									onerror={(e) => {
+										(e.currentTarget as HTMLImageElement).style.display = 'none';
+									}}
+								/>
+								<div class="stock-info">
+									<span class="stock-ticker">{stock.ticker}</span>
+									<span class="stock-trades">{stock.tradeCount} trade{stock.tradeCount !== 1 ? 's' : ''}</span>
+								</div>
+							</a>
+						{/each}
+					</div>
 				</section>
-			</main>
+			{/if}
+
+			<!-- Trade Timeline -->
+			<section class="section">
+				<h2 class="section-title">Trade History</h2>
+
+				{#if allTrades.length === 0}
+					<p class="empty-message">No trades found for this official.</p>
+				{:else}
+					<div class="table-container">
+						<table class="trades-table">
+							<thead>
+								<tr>
+									<th>Stock</th>
+									<th>Type</th>
+									<th>Amount</th>
+									<th>Date</th>
+									<th class="hide-mobile">Reported</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each allTrades as trade (trade.id)}
+									<tr>
+										<td>
+											<a href="/ticker/{trade.ticker}" class="stock-link">
+												<img
+													src={getCompanyLogoUrl(trade.ticker)}
+													alt=""
+													class="table-logo"
+													onerror={(e) => {
+														(e.currentTarget as HTMLImageElement).style.display = 'none';
+													}}
+												/>
+												<span class="table-ticker">{trade.ticker}</span>
+											</a>
+										</td>
+										<td>
+											<span
+												class="type-badge"
+												class:purchase={trade.transactionType === 'BUY'}
+												class:sale={trade.transactionType === 'SELL'}
+											>
+												{trade.transactionType === 'BUY' ? 'Purchase' : trade.transactionType === 'SELL' ? 'Sale' : trade.transactionType}
+											</span>
+										</td>
+										<td class="amount-cell">{trade.amountDisplay}</td>
+										<td class="date-cell">
+											{trade.transactionDate ? formatDate(trade.transactionDate) : '-'}
+										</td>
+										<td class="date-cell hide-mobile">
+											{trade.reportedDate ? formatDate(trade.reportedDate) : '-'}
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{/if}
+			</section>
 		</div>
 	{/if}
 </div>
 
 <style>
 	.politician-page {
-		max-width: 1200px;
+		max-width: 1000px;
 		margin: 0 auto;
-		padding: 2rem 1rem;
-		font-family: 'IBM Plex Mono', monospace;
+		padding: 1.5rem 1rem;
+		font-family: var(--font-mono);
 	}
 
 	.loading-state,
 	.error-state {
 		text-align: center;
 		padding: 3rem 1rem;
-		background: var(--color-newsprint);
+		background: var(--color-paper);
 		border: 1px solid var(--color-border);
+		border-radius: 10px;
 	}
 
 	.error-message {
@@ -304,9 +357,10 @@
 		display: inline-block;
 		padding: 0.5rem 1.5rem;
 		background: var(--color-ink);
-		color: var(--color-newsprint);
+		color: var(--color-paper);
 		text-decoration: none;
 		font-family: inherit;
+		border-radius: 6px;
 	}
 
 	.back-btn:hover {
@@ -314,115 +368,184 @@
 	}
 
 	.page-header {
-		margin-bottom: 2rem;
-		padding-bottom: 1rem;
-		border-bottom: 2px solid var(--color-ink);
+		margin-bottom: 1.5rem;
 	}
 
 	.back-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
 		font-size: 0.875rem;
 		color: var(--color-ink-muted);
 		text-decoration: none;
-		display: inline-block;
-		margin-bottom: 0.5rem;
 	}
 
 	.back-link:hover {
 		color: var(--color-ink);
 	}
 
-	.page-title {
-		font-size: 1.5rem;
-		font-weight: 700;
-		margin: 0;
-		color: var(--color-ink);
+	.back-icon {
+		width: 1rem;
+		height: 1rem;
 	}
 
-	.main-layout {
-		display: grid;
-		grid-template-columns: 200px 1fr;
-		gap: 2rem;
-	}
-
-	.sidebar {
-		text-align: center;
-	}
-
-	.portrait-section {
-		margin-bottom: 1rem;
-	}
-
-	.portrait {
-		width: 160px;
-		height: 200px;
-		object-fit: contain;
-		background: var(--color-paper, #fff);
-		border: 2px solid var(--color-ink);
-	}
-
-	.official-info {
+	.profile-card {
+		background: var(--color-paper);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		padding: 1.5rem;
 		margin-bottom: 1.5rem;
 	}
 
-	.official-name {
-		font-size: 1.125rem;
+	.profile-main {
+		display: flex;
+		align-items: center;
+		gap: 1.25rem;
+	}
+
+	.portrait-wrapper {
+		flex-shrink: 0;
+	}
+
+	.portrait {
+		width: 80px;
+		height: 80px;
+		border-radius: 50%;
+		object-fit: cover;
+		object-position: top;
+		background: var(--color-newsprint);
+		border: 3px solid var(--color-border);
+	}
+
+	.portrait-fallback {
+		width: 80px;
+		height: 80px;
+		border-radius: 50%;
+		background: var(--color-newsprint-dark);
+		border: 3px solid var(--color-border);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 1.5rem;
 		font-weight: 700;
-		margin: 0 0 0.25rem;
+		color: var(--color-ink-muted);
+	}
+
+	.profile-info {
+		min-width: 0;
+	}
+
+	.official-name {
+		font-size: 1.5rem;
+		font-weight: 700;
+		margin: 0 0 0.5rem;
 		color: var(--color-ink);
+	}
+
+	.official-meta {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
 	}
 
 	.official-title {
 		font-size: 0.875rem;
 		color: var(--color-ink-muted);
-		margin: 0 0 0.25rem;
 	}
 
-	.official-location {
-		font-size: 0.875rem;
-		color: var(--color-ink-faint);
-		margin: 0;
-	}
-
-	.insider-link {
-		display: inline-block;
-		padding: 0.5rem 1rem;
-		background: var(--color-ink);
-		color: var(--color-newsprint);
-		text-decoration: none;
+	.party-badge {
 		font-size: 0.75rem;
+		font-weight: 700;
+		padding: 0.25rem 0.625rem;
+		border-radius: 4px;
+		background: var(--color-newsprint-dark);
+		color: var(--color-ink-muted);
+	}
+
+	.party-badge.republican {
+		background: #fee2e2;
+		color: #b91c1c;
+	}
+
+	.party-badge.democrat {
+		background: #dbeafe;
+		color: #1d4ed8;
+	}
+
+	:global([data-theme='dark']) .party-badge.republican {
+		background: #450a0a;
+		color: #fca5a5;
+	}
+
+	:global([data-theme='dark']) .party-badge.democrat {
+		background: #1e3a5f;
+		color: #93c5fd;
+	}
+
+	.state {
+		font-size: 0.875rem;
+		color: var(--color-ink-muted);
+	}
+
+	.stats-row {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 1rem;
+		margin-top: 1.5rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.stat-item {
+		text-align: center;
+	}
+
+	.stat-value {
+		display: block;
+		font-size: 1.25rem;
+		font-weight: 700;
+		color: var(--color-ink);
+	}
+
+	.stat-value.stat-buy {
+		color: var(--color-gain, #047857);
+	}
+
+	.stat-value.stat-sell {
+		color: var(--color-loss, #b91c1c);
+	}
+
+	.stat-label {
+		font-size: 0.6875rem;
+		color: var(--color-ink-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
 
-	.insider-link:hover {
-		background: var(--color-ink-light);
-	}
-
-	.content {
-		min-width: 0;
+	.main-content {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
 	}
 
 	.section {
-		margin-bottom: 2rem;
-		background: var(--color-newsprint);
+		background: var(--color-paper);
 		border: 1px solid var(--color-border);
-		padding: 1.5rem;
+		border-radius: 10px;
+		padding: 1.25rem;
 	}
 
 	.section-title {
-		font-size: 0.75rem;
+		font-size: 0.875rem;
 		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		color: var(--color-ink-faint);
+		color: var(--color-ink);
 		margin: 0 0 1rem;
-		padding-bottom: 0.5rem;
-		border-bottom: 1px dotted var(--color-border);
 	}
 
 	.stocks-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
 		gap: 0.75rem;
 	}
 
@@ -431,33 +554,48 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 0.5rem;
-		padding: 0.75rem;
-		background: var(--color-newsprint-dark);
+		padding: 0.875rem 0.5rem;
+		background: var(--color-newsprint);
 		border: 1px solid var(--color-border);
+		border-radius: 8px;
 		text-decoration: none;
 		color: inherit;
-		transition: box-shadow 0.15s, transform 0.15s;
+		transition: background-color 0.15s, transform 0.15s;
 	}
 
 	.stock-card:hover {
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+		background: var(--color-newsprint-dark);
 		transform: translateY(-2px);
 	}
 
 	.stock-logo {
-		width: 40px;
-		height: 40px;
+		width: 36px;
+		height: 36px;
 		object-fit: contain;
 	}
 
+	.stock-info {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.125rem;
+	}
+
 	.stock-ticker {
-		font-size: 0.75rem;
-		font-weight: 600;
+		font-size: 0.8125rem;
+		font-weight: 700;
 		color: var(--color-ink);
+	}
+
+	.stock-trades {
+		font-size: 0.6875rem;
+		color: var(--color-ink-muted);
 	}
 
 	.table-container {
 		overflow-x: auto;
+		margin: -0.25rem;
+		padding: 0.25rem;
 	}
 
 	.trades-table {
@@ -468,23 +606,27 @@
 
 	.trades-table th {
 		text-align: left;
-		font-size: 0.7rem;
+		font-size: 0.6875rem;
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: var(--color-ink-faint);
-		padding: 0.75rem 0.5rem;
-		border-bottom: 2px solid var(--color-ink);
+		color: var(--color-ink-muted);
+		padding: 0.625rem 0.5rem;
+		border-bottom: 1px solid var(--color-border);
 	}
 
 	.trades-table td {
 		padding: 0.75rem 0.5rem;
-		border-bottom: 1px dotted var(--color-border);
+		border-bottom: 1px solid var(--color-border);
 		vertical-align: middle;
 	}
 
+	.trades-table tbody tr:last-child td {
+		border-bottom: none;
+	}
+
 	.trades-table tbody tr:hover {
-		background: var(--color-newsprint-dark);
+		background: var(--color-newsprint);
 	}
 
 	.stock-link {
@@ -503,6 +645,7 @@
 		width: 24px;
 		height: 24px;
 		object-fit: contain;
+		border-radius: 4px;
 	}
 
 	.table-ticker {
@@ -512,20 +655,32 @@
 
 	.type-badge {
 		display: inline-block;
-		padding: 0.25rem 0.5rem;
+		padding: 0.25rem 0.625rem;
 		font-size: 0.75rem;
 		font-weight: 600;
-		border-radius: 2px;
+		border-radius: 4px;
+		background: var(--color-newsprint-dark);
+		color: var(--color-ink-muted);
 	}
 
 	.type-badge.purchase {
-		background: var(--color-gain-light);
-		color: var(--color-gain);
+		background: #d1fae5;
+		color: #047857;
 	}
 
 	.type-badge.sale {
-		background: var(--color-loss-light);
-		color: var(--color-loss);
+		background: #fee2e2;
+		color: #b91c1c;
+	}
+
+	:global([data-theme='dark']) .type-badge.purchase {
+		background: #064e3b;
+		color: #6ee7b7;
+	}
+
+	:global([data-theme='dark']) .type-badge.sale {
+		background: #450a0a;
+		color: #fca5a5;
 	}
 
 	.amount-cell {
@@ -538,41 +693,46 @@
 		white-space: nowrap;
 	}
 
+	.hide-mobile {
+		display: table-cell;
+	}
+
 	.empty-message {
 		text-align: center;
-		color: var(--color-ink-faint);
+		color: var(--color-ink-muted);
 		padding: 2rem;
 	}
 
-	@media (max-width: 768px) {
-		.main-layout {
-			grid-template-columns: 1fr;
+	@media (max-width: 640px) {
+		.stats-row {
+			grid-template-columns: repeat(2, 1fr);
 		}
 
-		.sidebar {
-			display: flex;
-			gap: 1.5rem;
-			align-items: center;
-			text-align: left;
-		}
-
-		.portrait-section {
-			margin-bottom: 0;
-		}
-
-		.portrait {
-			width: 100px;
-			height: 130px;
+		.hide-mobile {
+			display: none;
 		}
 
 		.stocks-grid {
-			grid-template-columns: repeat(4, 1fr);
+			grid-template-columns: repeat(3, 1fr);
+		}
+
+		.official-name {
+			font-size: 1.25rem;
 		}
 	}
 
-	@media (max-width: 500px) {
+	@media (max-width: 400px) {
+		.profile-main {
+			flex-direction: column;
+			text-align: center;
+		}
+
+		.official-meta {
+			justify-content: center;
+		}
+
 		.stocks-grid {
-			grid-template-columns: repeat(3, 1fr);
+			grid-template-columns: repeat(2, 1fr);
 		}
 	}
 </style>

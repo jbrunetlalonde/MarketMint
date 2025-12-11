@@ -511,19 +511,31 @@
 		<!-- Calendars Grid -->
 		<div class="calendars-grid mt-6">
 			<div class="calendar-card">
-				<h3 class="headline headline-sm">Upcoming Earnings</h3>
+				<div class="calendar-header">
+					<h3 class="headline headline-sm">Upcoming Earnings</h3>
+					<a href="/earnings" class="view-all-link">View All</a>
+				</div>
 				<EarningsCalendar />
 			</div>
 			<div class="calendar-card">
-				<h3 class="headline headline-sm">Upcoming IPOs</h3>
+				<div class="calendar-header">
+					<h3 class="headline headline-sm">Upcoming IPOs</h3>
+					<a href="/economic" class="view-all-link">View All</a>
+				</div>
 				<IPOCalendar />
 			</div>
 			<div class="calendar-card">
-				<h3 class="headline headline-sm">Ex-Dividend Dates</h3>
+				<div class="calendar-header">
+					<h3 class="headline headline-sm">Ex-Dividend Dates</h3>
+					<a href="/economic" class="view-all-link">View All</a>
+				</div>
 				<DividendCalendar />
 			</div>
 			<div class="calendar-card">
-				<h3 class="headline headline-sm">Stock Splits</h3>
+				<div class="calendar-header">
+					<h3 class="headline headline-sm">Stock Splits</h3>
+					<a href="/economic" class="view-all-link">View All</a>
+				</div>
 				<SplitCalendar />
 			</div>
 		</div>
@@ -559,8 +571,13 @@
 		</div>
 
 		<!-- Economic Indicators -->
-		<h3 class="headline headline-md mt-6">Economic Indicators</h3>
-		<EconomicSnapshot />
+		<div class="sidebar-card mt-6">
+			<div class="sidebar-card-header">
+				<h3 class="headline headline-md">Economic Indicators</h3>
+				<a href="/economic" class="view-all-link">View All</a>
+			</div>
+			<EconomicSnapshot />
+		</div>
 
 		<!-- Sector Performance -->
 		<h3 class="headline headline-md mt-6">Sector Performance</h3>
@@ -632,22 +649,107 @@
 	.calendars-grid {
 		display: grid;
 		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
+		gap: 1.25rem;
 	}
 
 	.calendar-card {
 		background: var(--color-paper);
 		border: 1px solid var(--color-border);
-		padding: 0.75rem;
+		border-radius: 10px;
+		padding: 1rem;
+		transition: all 0.2s ease;
 	}
 
-	.calendar-card .headline {
-		margin-bottom: 0.5rem;
+	.calendar-card:hover {
+		border-color: var(--color-ink-muted);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+	}
+
+	.calendar-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.75rem;
+		padding-bottom: 0.5rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.calendar-header .headline {
+		margin: 0;
+		padding: 0;
+		border: none;
+		font-size: 0.75rem;
+		letter-spacing: 0.03em;
+	}
+
+	.calendar-card .view-all-link {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-ink-muted);
+		text-decoration: none;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		transition: all 0.15s ease;
+	}
+
+	.calendar-card .view-all-link:hover {
+		color: var(--color-paper);
+		background: var(--color-ink);
+	}
+
+	/* Sidebar card styles */
+	.sidebar-card {
+		background: var(--color-paper);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		padding: 1rem;
+	}
+
+	.sidebar-card-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.75rem;
+		padding-bottom: 0.5rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.sidebar-card-header .headline {
+		margin: 0;
+		padding: 0;
+		border: none;
+		font-size: 0.75rem;
+	}
+
+	.sidebar-card .view-all-link {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-ink-muted);
+		text-decoration: none;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		transition: all 0.15s ease;
+	}
+
+	.sidebar-card .view-all-link:hover {
+		color: var(--color-paper);
+		background: var(--color-ink);
 	}
 
 	@media (max-width: 768px) {
 		.calendars-grid {
 			grid-template-columns: 1fr;
+			gap: 1rem;
+		}
+
+		.calendar-card {
+			padding: 0.875rem;
 		}
 	}
 

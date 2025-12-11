@@ -11,6 +11,7 @@ export interface ApiResponse<T> {
 	data?: T;
 	error?: {
 		message: string;
+		status?: number;
 		details?: unknown;
 	};
 }
@@ -40,7 +41,11 @@ export async function request<T>(
 		if (!response.ok) {
 			return {
 				success: false,
-				error: data.error || { message: 'Request failed' }
+				error: {
+					message: data.error?.message || 'Request failed',
+					status: response.status,
+					details: data.error?.details
+				}
 			};
 		}
 

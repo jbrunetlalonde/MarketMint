@@ -368,6 +368,7 @@
 		padding: 0.75rem;
 		background-color: var(--color-newsprint-dark, #e0e0d8);
 		border: 1px solid var(--color-border, #aaa);
+		border-radius: 6px;
 	}
 
 	[data-theme="dark"] .stat-box {
@@ -379,9 +380,10 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0.5rem;
+		padding: 0.5rem 0.625rem;
 		background-color: var(--color-newsprint-dark, #e0e0d8);
 		border: 1px solid var(--color-border, #aaa);
+		border-radius: 4px;
 	}
 
 	[data-theme="dark"] .stat-row {
@@ -392,13 +394,15 @@
 	.insider-card {
 		display: flex;
 		flex-direction: column;
-		border: 1px solid var(--color-ink-light, #e5e7eb);
-		background-color: var(--color-newsprint, #fafaf9);
+		border: 1px solid var(--color-border);
+		background-color: var(--color-paper);
+		border-radius: 10px;
+		overflow: hidden;
 	}
 
-	:global(.dark) .insider-card {
-		background-color: var(--color-bg-secondary, #1f2937);
-		border-color: var(--color-border, #374151);
+	:global([data-theme='dark']) .insider-card {
+		background-color: var(--color-paper);
+		border-color: var(--color-border);
 	}
 
 	.insider-card-header {
@@ -454,6 +458,7 @@
 		text-decoration: none;
 		color: inherit;
 		flex-shrink: 0;
+		border-radius: 4px;
 	}
 
 	:global(.dark) .ticker-chip {

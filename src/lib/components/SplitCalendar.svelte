@@ -165,7 +165,7 @@
 
 <style>
 	.splits-widget {
-		margin-top: 0.5rem;
+		/* Container styles */
 	}
 
 	.loading {
